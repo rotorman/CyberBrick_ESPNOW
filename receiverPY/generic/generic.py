@@ -1,5 +1,6 @@
 """
-This file belongs to the CyberBrick ESP-NOW transmitter & receiver project, hosted originally at:
+This file belongs to the CyberBrick ESP-NOW transmitter & receiver project,
+hosted originally at:
 https://github.com/rotorman/CyberBrick_ESPNOW
 Copyright (C) 2025, Risto Koiva
 
@@ -41,15 +42,32 @@ ExpressLRS transmitter module channel data according to CRSF specifications:
 The channel order, range, mixing and further parameters can be adjusted
 in the EdgeTX radio.
 
-The incoming value range of the channel data is from 173 to 1811,
-with 992 being middle.
+The incoming value range of the channel data with 100% range in EdgeTX
+is from 173 to 1811, with 992 being middle.
+If the output range is increased to -121.1% to +121.1% under OUTPUTS in
+EdgeTX, the value range increases form 0 to 1984, with 992 still being
+the middle position.
 
 The LEDs data is interpreted as RGB343 (3 bits for red, 4 for green and
-3 for blue) with an offset of 173 (value 173 -> R=0, G=0, B=0)
-Any value above 173+1023 is intepreted as
- R=b11100000
- G=b11110000
- B=b11100000
+3 for blue) with an offset of 173 (value 173 -> R=0, G=0, B=0).
+The input is converted into RGB888 output. The undefined bits are intepreted
+as 1, except if the value is 0, then as 0.
+Examples:
+
+value | binary (-173) | red  | green | blue
+173   | b000 0000 000 | 0    | 0     | 0 (<- dark/black)
+174   | b000 0000 001 | 0    | 0     | b0011 1111 = 63
+175   | b000 0000 010 | 0    | 0     | b0101 1111 = 95
+180   | b000 0000 111 | 0    | 0     | b1111 1111 = 255
+181   | b000 0001 000 | 0    | 31    | 0
+182   | b000 0001 001 | 0    | 31    | 63
+300   | b000 1111 111 | 0    | 255   | 255 (<- cyan)
+301   | b001 0000 000 | 63   | 0     | 0
+302   | b001 0000 001 | 63   | 0     | 63
+773   | b100 1011 000 | 159  | 191   | 0
+1196  | b111 1111 111 | 255  | 255   | 255 (<- white)
+
+Any value above 173+1023=1196 is intepreted as white.
 """
 
 from machine import Pin, PWM
@@ -162,7 +180,7 @@ SERVOPULSE_2_5MS_TICKS    = const(8192)
 FULLSCALE16BIT            = 65535
 PWMGAINCOEFFICIENTPOS     = const(80) # FULLSCALE16BIT/(CRSF_CHANNEL_VALUE_MAX - CRSF_CHANNEL_VALUE_MID)
 PWMGAINCOEFFICIENTNEG     = const(80) # FULLSCALE16BIT/(CRSF_CHANNEL_VALUE_MID - CRSF_CHANNEL_VALUE_MIN)
-LEDRGBGAIN                = const(0.625) # 1023 (CRSF_CHANNEL_VALUE_MAX-CRSF_CHANNEL_VALUE_MIN)
+MAXRGBVALUE               = const(1023) # max of 11-bit value range
 
 def BrushedMotorControl(channel):
   #deadzone check
@@ -172,17 +190,20 @@ def BrushedMotorControl(channel):
   else:
     if channel < CRSF_CHANNEL_VALUE_MID:
       # First direction
-      return (int)(min(PWMGAINCOEFFICIENTNEG*(CRSF_CHANNEL_VALUE_MID-channel), FULLSCALE16BIT)), 0
+      return (int)(max(min(PWMGAINCOEFFICIENTNEG*(CRSF_CHANNEL_VALUE_MID-channel), FULLSCALE16BIT)), 0), 0
     else:
       # Rotate in the other direction
-      return 0, (int)(min(PWMGAINCOEFFICIENTPOS*(channel-CRSF_CHANNEL_VALUE_MID), FULLSCALE16BIT))
+      return 0, (int)(max(min(PWMGAINCOEFFICIENTPOS*(channel-CRSF_CHANNEL_VALUE_MID), FULLSCALE16BIT)), 0)
       
 def rgb343(val):
-  adjusted = min((int)(LEDRGBGAIN*(val - CRSF_CHANNEL_VALUE_MIN)), 1023)
-  r = min((adjusted & 0b1110000000) >> 2, 255)
-  g = min((adjusted & 0b0001111000) << 1, 255)
-  b = min((adjusted & 0b0000000111) << 5, 255)
-  return r,g,b
+  adjusted = min(val - CRSF_CHANNEL_VALUE_MIN, MAXRGBVALUE)
+  if adjusted == 0:
+    return 0,0,0
+  else:
+    r = min(((adjusted & 0b1110000000) >> 2) + 0b11111, 255)
+    g = min(((adjusted & 0b0001111000) << 1) + 0b1111, 255)
+    b = min(((adjusted & 0b0000000111) << 5) + 0b11111, 255)
+    return r,g,b
 
 def mapchannel(chvalue, minmapvalue, maxmapvalue):
   if minmapvalue > SERVORAWmidpoint:
