@@ -55,6 +55,12 @@ button = Pin(9, Pin.IN) # User key/button on CyberBrick Core
 wifi_channel = 1
 # Remember to change it ALSO in the transmitter firmware!
 
+# Initialize all servo outputs with 1.5ms pulse length in 20ms period
+S1 = PWM(Pin(3), freq=50, duty_u16=4915) # servo center 1.5ms equals to 65535/20 * 1.5 = 4915
+S2 = PWM(Pin(2), freq=50, duty_u16=4915)
+S3 = PWM(Pin(1), freq=50, duty_u16=4915)
+S4 = PWM(Pin(0), freq=50, duty_u16=4915)
+
 # Initialize Wi-Fi in station mode
 sta = network.WLAN(network.STA_IF)
 sta.active(True)
@@ -117,6 +123,7 @@ blinkertime_ms = 750  # 1.5 Hz
 
 while True:
   if button.value() == 0:
+    # Broadcast own MAC
     send_bind()
   try:
     # Receive message (host MAC, message, 500ms failsafe timeout)
