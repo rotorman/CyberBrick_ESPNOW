@@ -223,6 +223,9 @@ def mapchannel(chvalue, minmapvalue, maxmapvalue):
 
 while True:
   if button.value() == 0:
+    # Replicate original CyberBrick behavior to center the Servo1 with user key press
+    S1.duty_u16(SERVORAWmidpoint)
+    # Broadcast own MAC
     send_bind()
   try:
     # Receive message (host MAC, message, 500ms failsafe timeout)

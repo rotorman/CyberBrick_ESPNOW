@@ -1,5 +1,6 @@
 """
-This file belongs to the CyberBrick ESP-NOW transmitter & receiver project, hosted originally at:
+This file belongs to the CyberBrick ESP-NOW transmitter & receiver project,
+hosted originally at:
 https://github.com/rotorman/CyberBrick_ESPNOW
 Copyright (C) 2025, Risto Koiva
 
