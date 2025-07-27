@@ -1,5 +1,6 @@
 """
-This file belongs to the CyberBrick ESP-NOW transmitter & receiver project, hosted originally at:
+This file belongs to the CyberBrick ESP-NOW transmitter & receiver project,
+hosted originally at:
 https://github.com/rotorman/CyberBrick_ESPNOW
 Copyright (C) 2025, Risto Koiva
 
@@ -238,7 +239,7 @@ while True:
           else:
             if throttle < CRSF_CHANNEL_VALUE_MID:
               # backwards
-              M1A.duty_u16((int)(min(PWMGAINCOEFFICIENTNEG*(CRSF_CHANNEL_VALUE_MID-throttle), FULLSCALE16BIT)))
+              M1A.duty_u16((int)(max(min(PWMGAINCOEFFICIENTNEG*(CRSF_CHANNEL_VALUE_MID-throttle), FULLSCALE16BIT),0)))
               M1B.duty_u16(0)
 
               # Check for steering if blinker needs to be actuated
@@ -272,7 +273,7 @@ while True:
             else:
               # forwards
               M1A.duty_u16(0)
-              M1B.duty_u16((int)(min(PWMGAINCOEFFICIENTPOS*(throttle-CRSF_CHANNEL_VALUE_MID), FULLSCALE16BIT)))
+              M1B.duty_u16((int)(max(min(PWMGAINCOEFFICIENTPOS*(throttle-CRSF_CHANNEL_VALUE_MID), FULLSCALE16BIT),0)))
 
               # Check for steering if blinker needs to be actuated
               if (steering > (SERVORAWmidpoint+SERVORAWdeadzoneplusminus)):

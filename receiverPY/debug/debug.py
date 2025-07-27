@@ -1,5 +1,6 @@
 """
-This file belongs to the CyberBrick ESP-NOW transmitter & receiver project, hosted originally at:
+This file belongs to the CyberBrick ESP-NOW transmitter & receiver project,
+hosted originally at:
 https://github.com/rotorman/CyberBrick_ESPNOW
 Copyright (C) 2025, Risto Koiva
 
@@ -27,10 +28,14 @@ ExpressLRS transmitter module channel data according to CRSF specifications:
 The channel order, range, mixing and further parameters can be adjusted
 in the EdgeTX radio.
 
-The incoming value range of the channel data is from 173 to 1811,
-with 992 being middle.
+The incoming value range of the channel data with 100% range in EdgeTX
+is from 173 to 1811, with 992 being middle.
+If the output range is increased to -121.1% to +121.1% under OUTPUTS in
+EdgeTX, the value range increases form 0 to 1984, with 992 still being
+the middle position.
 
-The most widely used mapping of the first 4 control channels are (Mode 2, AETR):
+The most widely used mapping of the first 4 control channels are
+(Mode 2, AETR, with std. +/-100% output range):
 1) ch1 - right horizontal (RH) stick (left 173, right 1811)
 2) ch2 - right vertical (RV) stick (up 173, down 1811)
 3) ch3 - left vertical (LV) stick (down 173, up 1811)

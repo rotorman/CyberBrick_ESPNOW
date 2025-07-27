@@ -1,5 +1,6 @@
 """
-This file belongs to the CyberBrick ESP-NOW transmitter & receiver project, hosted originally at:
+This file belongs to the CyberBrick ESP-NOW transmitter & receiver project,
+hosted originally at:
 https://github.com/rotorman/CyberBrick_ESPNOW
 Copyright (C) 2025, Risto Koiva
 
@@ -242,12 +243,12 @@ while True:
           else:
             if righttrack > CRSF_CHANNEL_VALUE_MID:
               # backwards
-              M1A.duty_u16((int)(min(PWMGAINCOEFFICIENTNEG*(righttrack-CRSF_CHANNEL_VALUE_MID), FULLSCALE16BIT)))
+              M1A.duty_u16((int)(max(min(PWMGAINCOEFFICIENTNEG*(righttrack-CRSF_CHANNEL_VALUE_MID), FULLSCALE16BIT),0)))
               M1B.duty_u16(0)
             else:
               # forwards
               M1A.duty_u16(0)
-              M1B.duty_u16((int)(min(PWMGAINCOEFFICIENTNEG*(CRSF_CHANNEL_VALUE_MID-righttrack), FULLSCALE16BIT)))
+              M1B.duty_u16((int)(max(min(PWMGAINCOEFFICIENTNEG*(CRSF_CHANNEL_VALUE_MID-righttrack), FULLSCALE16BIT),0)))
                   
           if ((lefttrack < (CRSF_CHANNEL_VALUE_MID+CRSFdeadzoneplusminus)) and (lefttrack > (CRSF_CHANNEL_VALUE_MID-CRSFdeadzoneplusminus))):
             #deadzone - no forward/backward movement
@@ -256,12 +257,12 @@ while True:
           else:
             if lefttrack > CRSF_CHANNEL_VALUE_MID:
               # backwards
-              M2A.duty_u16((int)(min(PWMGAINCOEFFICIENTNEG*(lefttrack-CRSF_CHANNEL_VALUE_MID), FULLSCALE16BIT)))
+              M2A.duty_u16((int)(max(min(PWMGAINCOEFFICIENTNEG*(lefttrack-CRSF_CHANNEL_VALUE_MID), FULLSCALE16BIT),0)))
               M2B.duty_u16(0)
             else:
               # forwards
               M2A.duty_u16(0)
-              M2B.duty_u16((int)(min(PWMGAINCOEFFICIENTNEG*(CRSF_CHANNEL_VALUE_MID-lefttrack), FULLSCALE16BIT)))
+              M2B.duty_u16((int)(max(min(PWMGAINCOEFFICIENTNEG*(CRSF_CHANNEL_VALUE_MID-lefttrack), FULLSCALE16BIT),0)))
 
       else:
         # Unexpected message length - blink yellow
