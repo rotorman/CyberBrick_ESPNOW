@@ -36,7 +36,7 @@ The code supports following external RF modules (modules listed alphabetically):
 
 Flashing the internal ExpressLRS module(s) is possible via EdgeTX passthrough (triggered in the background while uploading firmware from VSCode and PlatformIO by [Python script](https://github.com/rotorman/CyberBrick_ESPNOW/transmitterFW/python/EdgeTXpassthrough.py)). External modules can be flashed via UART (via USB-to-serial adapter).
 
-**NOTE!** In order to successfully bind the EdgeTX radio and the CyberBrick receiver(s), you need to first read out the CyberBrick Core WiFi MAC address(es) and then enter them into the [main.cpp](https://github.com/rotorman/CyberBrick_ESPNOW/blob/main/transmitterFW/src/main.cpp#L41-L43). You also need to use the same [WiFi channel](https://github.com/rotorman/CyberBrick_ESPNOW/blob/5421ba1e0b18e3feffc1dabf1fb9d93e87e9a4ad/transmitterFW/src/main.cpp#L51) on both sides, that you can also configure similarly. By default, WiFi channel 1 is used.
+**NOTE!** In order to successfully bind the EdgeTX radio and the CyberBrick receiver(s), you need to first read out the CyberBrick Core WiFi MAC address(es) and then enter them into the [main.cpp](https://github.com/rotorman/CyberBrick_ESPNOW/blob/main/transmitterFW/src/main.cpp#L41-L43).
 
 Numerous parts of the code used in this repository stem from the wonderful [ExpressLRS project](https://github.com/ExpressLRS/ExpressLRS/).
 
