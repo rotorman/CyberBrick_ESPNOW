@@ -48,10 +48,6 @@ import struct
 
 button = Pin(9, Pin.IN) # User key/button on CyberBrick Core
 
-# If you wish to change the WiFi channel, change this value (valid range is between 1 and 11):
-wifi_channel = 1
-# Remember to change it ALSO in the transmitter firmware!
-
 # Initialize all servo outputs with 1.5ms pulse length in 20ms period
 S1 = PWM(Pin(3), freq=50, duty_u16=4915) # servo center 1.5ms equals to 65535/20 * 1.5 = 4915
 #S2 = PWM(Pin(2), freq=50, duty_u16=4915)
@@ -80,7 +76,7 @@ def wifi_reset():
     utime.sleep_ms(100)
   sta = network.WLAN(network.STA_IF)
   sta.active(True)
-  sta.config(channel=wifi_channel,txpower=20,pm=sta.PM_NONE,reconnects=0)
+  sta.config(txpower=20,pm=sta.PM_NONE,reconnects=0)
   sta.disconnect()
 
 wifi_reset()

@@ -1,5 +1,6 @@
 /*
- * This file belongs to the CyberBrick ESP-NOW transmitter & receiver project, hosted originally at:
+ * This file belongs to the CyberBrick ESP-NOW transmitter & receiver project,
+ * hosted originally at:
  * https://github.com/rotorman/CyberBrick_ESPNOW
  * Copyright (C) 2025, Risto Kõiva
  *
@@ -25,6 +26,7 @@
 */
 
 #include <esp_now.h>
+#include <esp_wifi.h>
 #include <WiFi.h>
 #include "common.h"
 #include "CRSFHandset.h"
@@ -45,11 +47,6 @@ uint8_t cyberbrickRxMAC[][6] =
 // You can pick a model to control in EdgeTX under:
 // MODEL -> Internal RF or External RF -> Receiver <number>
 // where the number matches the model number in the above list.
-
-// All models must be programmed to use the same WiFi channel:
-
-#define WIFI_CHANNEL 1 // Change to a channel your model's CyberBrick Core MicroPython code is configured to!
-                       // Valid range is from 1 to 11
 
 /******************************************************************/
 
@@ -95,33 +92,39 @@ void loop() {
 
 bool initESPNOW()
 {
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_OFF);
   WiFi.mode(WIFI_STA);
-  WiFi.setChannel(WIFI_CHANNEL, WIFI_SECOND_CHAN_NONE);
   WiFi.setTxPower(WIFI_POWER_19_5dBm);
-  while (!WiFi.STA.started()) {
-    delay(100);
-  }
+  esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_LR);
+  WiFi.begin("network-name", "pass-to-network", 1);
+  WiFi.disconnect();
 
   // Init ESP-NOW
-  if (esp_now_init() != ESP_OK) return false;
-
-  // Register callback to get the status of the transmitted ESP-NOW packet
-  if (esp_now_register_send_cb(ESPNOW_OnDataSentCB) != ESP_OK) return false;
+  if (esp_now_init() != ESP_OK)
+  {
+    ESP.restart();
+  }
 
   // Register peers
+  memset(&peerInfo, 0, sizeof(esp_now_peer_info_t));
+  peerInfo.channel = 0;
+  peerInfo.encrypt = false;  
   bool bResult = true;
   for (int i = 0; i < sizeof(cyberbrickRxMAC)/6; i++)
   { 
     // Iterate through the peer addresses
-    memset(&peerInfo, 0, sizeof(esp_now_peer_info_t));
-    peerInfo.channel = WIFI_CHANNEL;
-    peerInfo.encrypt = false;
     memcpy(peerInfo.peer_addr, cyberbrickRxMAC[i], 6);
     if (esp_now_add_peer(&peerInfo) != ESP_OK)
     {
       bResult = false;
     }
   }
+  
+  // Register callback to get the status of the transmitted ESP-NOW packet
+  if (esp_now_register_send_cb(ESPNOW_OnDataSentCB) != ESP_OK)
+    bResult = false;
+  
   return bResult;
 }
 
