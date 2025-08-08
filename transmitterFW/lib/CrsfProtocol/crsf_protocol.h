@@ -24,8 +24,7 @@
 #include <cstdint>
 #include <cmath>
 #include "crc.h"
-
-extern const char device_name[];
+#include "options.h"
 
 #define PACKED __attribute__((packed))
 
@@ -44,26 +43,13 @@ extern const char device_name[];
 
 #define CRSF_SYNC_BYTE 0xC8
 
-#define CRSF_PAYLOAD_SIZE_MAX 62
 #define CRSF_FRAME_NOT_COUNTED_BYTES 2
 #define CRSF_FRAME_SIZE(payload_size) ((payload_size) + 2) // See crsf_header_t.frame_size
-#define CRSF_EXT_FRAME_SIZE(payload_size) (CRSF_FRAME_SIZE(payload_size) + 2)
-#define CRSF_FRAME_SIZE_MAX (CRSF_PAYLOAD_SIZE_MAX + CRSF_FRAME_NOT_COUNTED_BYTES)
 #define CRSF_FRAME_CRC_SIZE 1
-#define CRSF_FRAME_LENGTH_EXT_TYPE_CRC 4 // length of Extended Dest/Origin, TYPE and CRC fields combined
 
 #define CRSF_TELEMETRY_LENGTH_INDEX 1
-#define CRSF_TELEMETRY_TYPE_INDEX 2
-#define CRSF_TELEMETRY_FIELD_ID_INDEX 5
-#define CRSF_TELEMETRY_FIELD_CHUNK_INDEX 6
-#define CRSF_TELEMETRY_CRC_LENGTH 1
-#define CRSF_TELEMETRY_TOTAL_SIZE(x) (x + CRSF_FRAME_LENGTH_EXT_TYPE_CRC)
 
 //////////////////////////////////////////////////////////////
-
-#define CRSF_MSP_REQ_PAYLOAD_SIZE 8
-#define CRSF_MSP_RESP_PAYLOAD_SIZE 58
-#define CRSF_MSP_MAX_PAYLOAD_SIZE (CRSF_MSP_REQ_PAYLOAD_SIZE > CRSF_MSP_RESP_PAYLOAD_SIZE ? CRSF_MSP_REQ_PAYLOAD_SIZE : CRSF_MSP_RESP_PAYLOAD_SIZE)
 
 typedef enum : uint8_t
 {
@@ -72,6 +58,9 @@ typedef enum : uint8_t
     // Extended Header Frames, range from 0x28 to 0x96
     CRSF_FRAMETYPE_DEVICE_PING = 0x28,
     CRSF_FRAMETYPE_DEVICE_INFO = 0x29,
+    CRSF_FRAMETYPE_PARAMETER_SETTINGS_ENTRY = 0x2B,
+    CRSF_FRAMETYPE_PARAMETER_READ = 0x2C,
+    CRSF_FRAMETYPE_PARAMETER_WRITE = 0x2D,
     CRSF_FRAMETYPE_COMMAND = 0x32,
     CRSF_FRAMETYPE_HANDSET = 0x3A
 } crsf_frame_type_e;
@@ -92,7 +81,8 @@ typedef enum : uint8_t
     CRSF_ADDRESS_FLIGHT_CONTROLLER = 0xC8,
     CRSF_ADDRESS_RADIO_TRANSMITTER = 0xEA,
     CRSF_ADDRESS_CRSF_RECEIVER = 0xEC,
-    CRSF_ADDRESS_CRSF_TRANSMITTER = 0xEE
+    CRSF_ADDRESS_CRSF_TRANSMITTER = 0xEE,
+    CRSF_ADDRESS_ELRS_LUA = 0xEF
 } crsf_addr_e;
 
 //typedef struct crsf_addr_e asas;
@@ -184,7 +174,7 @@ typedef struct deviceInformationPacket_s
     uint32_t serialNo;
     uint32_t hardwareVer;
     uint32_t softwareVer;
-    uint8_t parametersCnt;
+    uint8_t fieldCnt;          //number of field of params this device has
     uint8_t parameterVersion;
 } PACKED deviceInformationPacket_t;
 
@@ -204,23 +194,6 @@ union inBuffer_U
     rcPacket_t asRCPacket_t;    // access the memory as RC data
                                 // add other packet types here
 };
-
-/*
- * 0x14 Link statistics
- * Payload:
- *
- * uint8_t Uplink RSSI Ant. 1 ( dBm * -1 )
- * uint8_t Uplink RSSI Ant. 2 ( dBm * -1 )
- * uint8_t Uplink Package success rate / Link quality ( % )
- * int8_t Uplink SNR ( db )
- * uint8_t Diversity active antenna ( enum ant. 1 = 0, ant. 2 )
- * uint8_t RF Mode ( enum 4fps = 0 , 50fps, 150hz)
- * uint8_t Uplink TX Power ( enum 0mW = 0, 10mW, 25 mW, 100 mW, 500 mW, 1000 mW, 2000mW )
- * uint8_t Downlink RSSI ( dBm * -1 )
- * uint8_t Downlink package success rate / Link quality ( % )
- * int8_t Downlink SNR ( db )
- * Uplink is the connection from the ground to the UAV and downlink the opposite direction.
- */
 
 typedef struct crsfPayloadLinkstatistics_s
 {
@@ -249,48 +222,15 @@ static inline uint16_t ICACHE_RAM_ATTR CRSF_to_US(uint16_t val)
     return fmap(val, CRSF_CHANNEL_VALUE_MIN, CRSF_CHANNEL_VALUE_MAX, 988, 2012);
 }
 
-// Scale down a 10-bit value to a -100& to +100% crossfire value
-static inline uint16_t ICACHE_RAM_ATTR UINT10_to_CRSF(uint16_t val)
+static inline uint16_t htobe16(uint16_t val)
 {
-    return fmap(val, 0, 1023, CRSF_CHANNEL_VALUE_MIN, CRSF_CHANNEL_VALUE_MAX);
+#if (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+    return val;
+#else
+    return __builtin_bswap16(val);
+#endif
 }
 
-// Scale up a -100& to +100% crossfire value to 10-bit
-static inline uint16_t ICACHE_RAM_ATTR CRSF_to_UINT10(uint16_t val)
-{
-    return fmap(val, CRSF_CHANNEL_VALUE_MIN, CRSF_CHANNEL_VALUE_MAX, 0, 1023);
-}
-
-// Convert 0-max to the CRSF values for 1000-2000
-static inline uint16_t ICACHE_RAM_ATTR N_to_CRSF(uint16_t val, uint16_t max)
-{
-    return val * (CRSF_CHANNEL_VALUE_2000-CRSF_CHANNEL_VALUE_1000) / max + CRSF_CHANNEL_VALUE_1000;
-}
-
-// Convert CRSF to 0-(cnt-1), constrained between 1000us and 2000us
-static inline uint16_t ICACHE_RAM_ATTR CRSF_to_N(uint16_t val, uint16_t cnt)
-{
-    // The span is increased by one to prevent the max val from returning cnt
-    if (val <= CRSF_CHANNEL_VALUE_1000)
-        return 0;
-    if (val >= CRSF_CHANNEL_VALUE_2000)
-        return cnt - 1;
-    return (val - CRSF_CHANNEL_VALUE_1000) * cnt / (CRSF_CHANNEL_VALUE_2000 - CRSF_CHANNEL_VALUE_1000 + 1);
-}
-
-// Returns 1 if val is greater than CRSF_CHANNEL_VALUE_MID
-static inline uint8_t ICACHE_RAM_ATTR CRSF_to_BIT(uint16_t val)
-{
-    return (val > CRSF_CHANNEL_VALUE_MID) ? 1 : 0;
-}
-
-// Convert a bit into either the CRSF value for 1000 or 2000
-static inline uint16_t ICACHE_RAM_ATTR BIT_to_CRSF(uint8_t val)
-{
-    return (val) ? CRSF_CHANNEL_VALUE_2000 : CRSF_CHANNEL_VALUE_1000;
-}
-
-#if !defined(__linux__)
 static inline uint32_t htobe32(uint32_t val)
 {
 #if (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
@@ -299,4 +239,3 @@ static inline uint32_t htobe32(uint32_t val)
     return __builtin_bswap32(val);
 #endif
 }
-#endif

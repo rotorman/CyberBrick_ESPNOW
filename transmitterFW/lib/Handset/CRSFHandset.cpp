@@ -22,18 +22,15 @@
 #include "CRSF.h"
 #include "CRSFHandset.h"
 #include "FIFO.h"
+#include "helpers.h"
+#include "device.h"
 
 #include <hal/uart_ll.h>
 #include <soc/soc.h>
 #include <soc/uart_reg.h>
-#include <esp32/rom/gpio.h>
-
-#if (GPIO_PIN_RCSIGNAL_RX_IN == 16) && (GPIO_PIN_RCSIGNAL_TX_OUT == 17)
-HardwareSerial CRSFHandset::Port(1);
-#else
+// UART0 is used since for full duplex connection we can connect directly through IO_MUX and not the Matrix
+// for better performance, and on other targets (mostly using pin 13), it always uses Matrix
 HardwareSerial CRSFHandset::Port(0);
-#endif
-
 RTC_DATA_ATTR int rtcModelId = 0;
 
 static constexpr int HANDSET_TELEMETRY_FIFO_SIZE = 128; // this is the smallest telemetry FIFO size in EdgeTX with CRSF defined
@@ -42,33 +39,40 @@ static constexpr int HANDSET_TELEMETRY_FIFO_SIZE = 128; // this is the smallest 
 static constexpr auto CRSF_SERIAL_OUT_FIFO_SIZE = 256U;
 static FIFO<CRSF_SERIAL_OUT_FIFO_SIZE> SerialOutFIFO;
 
-uint8_t CRSFHandset::modelId = 0; // Initialize the model ID as received from the handset to first model
+/// UART Handling ///
+uint32_t CRSFHandset::GoodPktsCountResult = 0;
+uint32_t CRSFHandset::BadPktsCountResult = 0;
+
+uint8_t CRSFHandset::modelId = 0;
+bool CRSFHandset::elrsLUAmode = false;
 bool CRSFHandset::halfDuplex = false;
 
 /// EdgeTX mixer sync ///
-static const int32_t EdgeTXsyncPacketInterval = 200; // in ms
-static const int32_t EdgeTXsyncOffsetSafeMargin = 1000; // 100us
+static const int32_t EdgeTXsyncPacketIntervalMS = 200; // in ms
+static const int32_t EdgeTXsyncOffsetSafeMargin100NS = 1000; // 100us
 
 /// UART Handling ///
 static const int32_t TxToHandsetBauds[] = {400000, 115200, 5250000, 3750000, 1870000, 921600, 2250000};
+uint8_t CRSFHandset::UARTcurrentBaudIdx = 6;   // only used for baud-cycling, initialized to the end so the next one we try is the first in the list
 uint32_t CRSFHandset::UARTrequestedBaud = 5250000;
 
 // for the UART wdt, every 1000ms we change bauds when connect is lost
-static const int UARTwdtInterval = 1000;
+static const int UARTwdtIntervalMS = 1000;
 
 void CRSFHandset::Begin()
 {
-    UARTwdtLastChecked = millis() + UARTwdtInterval; // allows a delay before the first time the UARTwdt() function is called
-	
-    #if not defined(GPIO_PIN_RCSIGNAL_RX_IN) || not defined(GPIO_PIN_RCSIGNAL_TX_OUT)
-        #error "GPIO_PIN_RCSIGNAL_RX_IN and GPIO_PIN_RCSIGNAL_TX_OUT must be defined for the RF module to be able to talk to the handset"
+    UARTwdtLastCheckedMS = millis() + UARTwdtIntervalMS; // allows a delay before the first time the UARTwdt() function is called
+
+    #if not defined(GPIO_PIN_RCSIGNAL_RX) || not defined(GPIO_PIN_RCSIGNAL_TX)
+        #error "GPIO_PIN_RCSIGNAL_RX and GPIO_PIN_RCSIGNAL_TX must be defined for the RF module to be able to talk to the handset"
     #endif
-    halfDuplex = (GPIO_PIN_RCSIGNAL_TX_OUT == GPIO_PIN_RCSIGNAL_RX_IN);
+
+    halfDuplex = (GPIO_PIN_RCSIGNAL_TX == GPIO_PIN_RCSIGNAL_RX);
 
     portDISABLE_INTERRUPTS();
     UARTinverted = halfDuplex; // on a half duplex UART, go with inverted
     CRSFHandset::Port.begin(UARTrequestedBaud, SERIAL_8N1,
-                     GPIO_PIN_RCSIGNAL_RX_IN, GPIO_PIN_RCSIGNAL_TX_OUT,
+                     GPIO_PIN_RCSIGNAL_RX, GPIO_PIN_RCSIGNAL_TX,
                      false, 0);
     // Arduino defaults every ESP32 stream to a 1000ms timeout, need to explicitly override this
     CRSFHandset::Port.setTimeout(0);
@@ -82,7 +86,20 @@ void CRSFHandset::Begin()
     {
         modelId = rtcModelId;
         if (RecvModelUpdate) RecvModelUpdate();
-    }    
+    }
+}
+
+void CRSFHandset::End()
+{
+    uint32_t startTime = millis();
+    while (SerialOutFIFO.peek() > 0)
+    {
+        handleInput();
+        if (millis() - startTime > 1000)
+        {
+            break;
+        }
+    }
 }
 
 void CRSFHandset::flush_port_input()
@@ -156,6 +173,16 @@ void CRSFHandset::sendTelemetryToTX(uint8_t *data)
     }
 }
 
+void ICACHE_RAM_ATTR CRSFHandset::setPacketIntervalUS(int32_t PacketIntervalUS)
+{
+    RequestedRCpacketIntervalUS = PacketIntervalUS;
+    EdgeTXsyncOffset100NS = 0;
+    EdgeTXsyncWindowUS = 0;
+    EdgeTXsyncWindowSizeUS = std::max((int32_t)1, (int32_t)(20000/RequestedRCpacketIntervalUS));
+    EdgeTXsyncLastSentMS -= EdgeTXsyncPacketIntervalMS;
+    adjustMaxPacketSize();
+}
+
 void ICACHE_RAM_ATTR CRSFHandset::JustSentRFpacket()
 {
     // read them in this order to prevent a potential race condition
@@ -166,25 +193,26 @@ void ICACHE_RAM_ATTR CRSFHandset::JustSentRFpacket()
     if (delta >= (int32_t)RequestedRCpacketIntervalUS)
     {
         // missing/late packet, force resync
-        EdgeTXsyncOffset = -(delta % RequestedRCpacketIntervalUS) * 10;
-        EdgeTXsyncWindow = 0;
-        EdgeTXsyncLastSent -= EdgeTXsyncPacketInterval;
+        EdgeTXsyncOffset100NS = -(delta % RequestedRCpacketIntervalUS) * 10;
+        EdgeTXsyncWindowUS = 0;
+        EdgeTXsyncLastSentMS -= EdgeTXsyncPacketIntervalMS;
     }
     else
     {
         // The number of packets in the sync window is how many will fit in 20ms.
-        EdgeTXsyncWindow = std::min(EdgeTXsyncWindow + 1, (int32_t)EdgeTXsyncWindowSize);
-        EdgeTXsyncOffset = ((EdgeTXsyncOffset * (EdgeTXsyncWindow-1)) + delta * 10) / EdgeTXsyncWindow;
+        // This gives quite quite coarse changes for 50Hz, but more fine grained changes at 1000Hz.
+        EdgeTXsyncWindowUS = std::min(EdgeTXsyncWindowUS + 1, (int32_t)EdgeTXsyncWindowSizeUS);
+        EdgeTXsyncOffset100NS = ((EdgeTXsyncOffset100NS * (EdgeTXsyncWindowUS-1)) + delta * 10) / EdgeTXsyncWindowUS;
     }
 }
 
-void CRSFHandset::sendSyncPacketToTX() // in values in us.
+void CRSFHandset::sendSyncPacketToTX()
 {
     uint32_t now = millis();
-    if (controllerConnected && (now - EdgeTXsyncLastSent) >= EdgeTXsyncPacketInterval)
+    if (controllerConnected && (now - EdgeTXsyncLastSentMS) >= EdgeTXsyncPacketIntervalMS)
     {
-        int32_t packetRate = RequestedRCpacketIntervalUS * 10; //convert from us to right format
-        int32_t offset = EdgeTXsyncOffset - EdgeTXsyncOffsetSafeMargin; // offset so that opentx always has some headroom
+        int32_t packetRate100US = RequestedRCpacketIntervalUS * 10; //convert from us to right format
+        int32_t offset = EdgeTXsyncOffset100NS - EdgeTXsyncOffsetSafeMargin100NS; // offset so that EdgeTX always has some headroom
 
         struct etxSyncData {
             uint8_t subType; // CRSF_HANDSET_SUBCMD_TIMING
@@ -196,12 +224,12 @@ void CRSFHandset::sendSyncPacketToTX() // in values in us.
         auto * const sync = (struct etxSyncData * const)buffer;
 
         sync->subType = CRSF_HANDSET_SUBCMD_TIMING;
-        sync->rate = htobe32(packetRate);
+        sync->rate = htobe32(packetRate100US);
         sync->offset = htobe32(offset);
 
         packetQueueExtended(CRSF_FRAMETYPE_HANDSET, buffer, sizeof(buffer));
 
-        EdgeTXsyncLastSent = now;
+        EdgeTXsyncLastSentMS = now;
     }
 }
 
@@ -225,7 +253,6 @@ void CRSFHandset::RcPacketToChannelsData() // data is packed as 11 bits per chan
             readValue |= ((uint32_t) readByte) << bitsMerged;
             bitsMerged += 8;
         }
-        //printf("rv=%x(%x) bm=%u\n", readValue, (readValue & inputChannelMask), bitsMerged);
         n = (uint16_t)((readValue & inputChannelMask) << precisionShift);
         readValue >>= srcBits;
         bitsMerged -= srcBits;
@@ -240,7 +267,6 @@ bool CRSFHandset::processInternalCrsfPackage(uint8_t *package)
     const crsf_ext_header_t *header = (crsf_ext_header_t *)package;
     const crsf_frame_type_e packetType = (crsf_frame_type_e)header->type;
 
-	/*
     // Enter Binding Mode
     if (packetType == CRSF_FRAMETYPE_COMMAND
         && header->frame_size >= 6 // official CRSF is 7 bytes with two CRCs
@@ -252,20 +278,27 @@ bool CRSFHandset::processInternalCrsfPackage(uint8_t *package)
         if (OnBindingCommand) OnBindingCommand();
         return true;
     }
-	*/
 
     if (packetType >= CRSF_FRAMETYPE_DEVICE_PING &&
         (header->dest_addr == CRSF_ADDRESS_CRSF_TRANSMITTER || header->dest_addr == CRSF_ADDRESS_BROADCAST) &&
-        (header->orig_addr == CRSF_ADDRESS_RADIO_TRANSMITTER))
+        (header->orig_addr == CRSF_ADDRESS_RADIO_TRANSMITTER || header->orig_addr == CRSF_ADDRESS_ELRS_LUA))
     {
+        elrsLUAmode = header->orig_addr == CRSF_ADDRESS_ELRS_LUA; // 0xEF
+
         if (packetType == CRSF_FRAMETYPE_COMMAND && header->payload[0] == CRSF_COMMAND_SUBCMD_RX && header->payload[1] == CRSF_COMMAND_MODEL_SELECT_ID)
         {
             modelId = header->payload[2];
             rtcModelId = modelId;
             if (RecvModelUpdate) RecvModelUpdate();
         }
+        else
+        {
+            if (RecvParameterUpdate) RecvParameterUpdate(packetType, header->payload[0], header->payload[1]);
+        }
+
         return true;
     }
+
     return false;
 }
 
@@ -287,7 +320,7 @@ bool CRSFHandset::ProcessPacket()
 
     if (packetType == CRSF_FRAMETYPE_RC_CHANNELS_PACKED)
     {
-        RCdataLastRecv = micros();
+        RCdataLastRecvUS = micros();
         RcPacketToChannelsData();
         packetReceived = true;
     }
@@ -295,20 +328,12 @@ bool CRSFHandset::ProcessPacket()
     else if (packetType >= CRSF_FRAMETYPE_DEVICE_PING &&
             (SerialInBuffer[3] == CRSF_ADDRESS_FLIGHT_CONTROLLER || SerialInBuffer[3] == CRSF_ADDRESS_BROADCAST || SerialInBuffer[3] == CRSF_ADDRESS_CRSF_RECEIVER))
     {
-		if (packetType == CRSF_FRAMETYPE_DEVICE_PING)
-		{
-			// Reply with device information
-			uint8_t deviceInformation[DEVICE_INFORMATION_LENGTH];
-			CRSF::GetDeviceInformation(deviceInformation, 0);
-			// does append header + crc again so subtract size from length
-			CRSFHandset::packetQueueExtended(CRSF_FRAMETYPE_DEVICE_INFO, deviceInformation + sizeof(crsf_ext_header_t), DEVICE_INFORMATION_PAYLOAD_LENGTH);
-		}
         packetReceived = true;
     }
 
-	packetReceived |= processInternalCrsfPackage(SerialInBuffer);
-    
-	return packetReceived;
+    packetReceived |= processInternalCrsfPackage(SerialInBuffer);
+
+    return packetReceived;
 }
 
 void CRSFHandset::alignBufferToSync(uint8_t startIdx)
@@ -333,12 +358,12 @@ void CRSFHandset::alignBufferToSync(uint8_t startIdx)
 void CRSFHandset::handleInput()
 {
     uint8_t *SerialInBuffer = inBuffer.asUint8_t;
-	
-	if (UARTwdt())
+
+    if (UARTwdt())
     {
         return;
     }
-	
+
     if (transmitting)
     {
         // if currently transmitting in half-duplex mode then check if the TX buffers are empty.
@@ -449,6 +474,7 @@ void CRSFHandset::handleOutput(int receivedBytes)
 
             // write the packet out, if it's a large package the offset holds the starting position
             CRSFHandset::Port.write(CRSFoutBuffer + sendingOffset, writeLength);
+
             sendingOffset += writeLength;
             packageLengthRemaining -= writeLength;
             periodBytesRemaining -= writeLength;
@@ -458,40 +484,40 @@ void CRSFHandset::handleOutput(int receivedBytes)
 
 void CRSFHandset::duplex_set_RX() const
 {
-    ESP_ERROR_CHECK(gpio_set_direction((gpio_num_t)GPIO_PIN_RCSIGNAL_RX_IN, GPIO_MODE_INPUT));
+    ESP_ERROR_CHECK(gpio_set_direction((gpio_num_t)GPIO_PIN_RCSIGNAL_RX, GPIO_MODE_INPUT));
     if (UARTinverted)
     {
-        gpio_matrix_in((gpio_num_t)GPIO_PIN_RCSIGNAL_RX_IN, U0RXD_IN_IDX, true);
-        gpio_pulldown_en((gpio_num_t)GPIO_PIN_RCSIGNAL_RX_IN);
-        gpio_pullup_dis((gpio_num_t)GPIO_PIN_RCSIGNAL_RX_IN);
+        gpio_matrix_in((gpio_num_t)GPIO_PIN_RCSIGNAL_RX, U0RXD_IN_IDX, true);
+        gpio_pulldown_en((gpio_num_t)GPIO_PIN_RCSIGNAL_RX);
+        gpio_pullup_dis((gpio_num_t)GPIO_PIN_RCSIGNAL_RX);
     }
     else
     {
-        gpio_matrix_in((gpio_num_t)GPIO_PIN_RCSIGNAL_RX_IN, U0RXD_IN_IDX, false);
-        gpio_pullup_en((gpio_num_t)GPIO_PIN_RCSIGNAL_RX_IN);
-        gpio_pulldown_dis((gpio_num_t)GPIO_PIN_RCSIGNAL_RX_IN);
+        gpio_matrix_in((gpio_num_t)GPIO_PIN_RCSIGNAL_RX, U0RXD_IN_IDX, false);
+        gpio_pullup_en((gpio_num_t)GPIO_PIN_RCSIGNAL_RX);
+        gpio_pulldown_dis((gpio_num_t)GPIO_PIN_RCSIGNAL_RX);
     }
 }
 
 void CRSFHandset::duplex_set_TX() const
 {
-    ESP_ERROR_CHECK(gpio_set_pull_mode((gpio_num_t)GPIO_PIN_RCSIGNAL_TX_OUT, GPIO_FLOATING));
-    ESP_ERROR_CHECK(gpio_set_pull_mode((gpio_num_t)GPIO_PIN_RCSIGNAL_RX_IN, GPIO_FLOATING));
+    ESP_ERROR_CHECK(gpio_set_pull_mode((gpio_num_t)GPIO_PIN_RCSIGNAL_TX, GPIO_FLOATING));
+    ESP_ERROR_CHECK(gpio_set_pull_mode((gpio_num_t)GPIO_PIN_RCSIGNAL_RX, GPIO_FLOATING));
     if (UARTinverted)
     {
-        ESP_ERROR_CHECK(gpio_set_level((gpio_num_t)GPIO_PIN_RCSIGNAL_TX_OUT, 0));
-        ESP_ERROR_CHECK(gpio_set_direction((gpio_num_t)GPIO_PIN_RCSIGNAL_TX_OUT, GPIO_MODE_OUTPUT));
+        ESP_ERROR_CHECK(gpio_set_level((gpio_num_t)GPIO_PIN_RCSIGNAL_TX, 0));
+        ESP_ERROR_CHECK(gpio_set_direction((gpio_num_t)GPIO_PIN_RCSIGNAL_TX, GPIO_MODE_OUTPUT));
         constexpr uint8_t MATRIX_DETACH_IN_LOW = 0x30; // routes 0 to matrix slot
         gpio_matrix_in(MATRIX_DETACH_IN_LOW, U0RXD_IN_IDX, false); // Disconnect RX from all pads
-        gpio_matrix_out((gpio_num_t)GPIO_PIN_RCSIGNAL_TX_OUT, U0TXD_OUT_IDX, true, false);
+        gpio_matrix_out((gpio_num_t)GPIO_PIN_RCSIGNAL_TX, U0TXD_OUT_IDX, true, false);
     }
     else
     {
-        ESP_ERROR_CHECK(gpio_set_level((gpio_num_t)GPIO_PIN_RCSIGNAL_TX_OUT, 1));
-        ESP_ERROR_CHECK(gpio_set_direction((gpio_num_t)GPIO_PIN_RCSIGNAL_TX_OUT, GPIO_MODE_OUTPUT));
+        ESP_ERROR_CHECK(gpio_set_level((gpio_num_t)GPIO_PIN_RCSIGNAL_TX, 1));
+        ESP_ERROR_CHECK(gpio_set_direction((gpio_num_t)GPIO_PIN_RCSIGNAL_TX, GPIO_MODE_OUTPUT));
         constexpr uint8_t MATRIX_DETACH_IN_HIGH = 0x38; // routes 1 to matrix slot
         gpio_matrix_in(MATRIX_DETACH_IN_HIGH, U0RXD_IN_IDX, false); // Disconnect RX from all pads
-        gpio_matrix_out((gpio_num_t)GPIO_PIN_RCSIGNAL_TX_OUT, U0TXD_OUT_IDX, false, false);
+        gpio_matrix_out((gpio_num_t)GPIO_PIN_RCSIGNAL_TX, U0TXD_OUT_IDX, false, false);
     }
 }
 
@@ -520,7 +546,7 @@ void ICACHE_RAM_ATTR CRSFHandset::adjustMaxPacketSize()
     // involved from RX -> TX and vice-versa. The maxPacketBytes is used as the Lua chunk size so each chunk can be returned
     // to the handset and not be broken across time-slots as there can be issues with spurious glitches on the s.port pin
     // which switching direction. It also appears that the absolute minimum packet size should be 15 bytes as this will fit
-    // the LinkStatistics and OpenTX sync packets.
+    // the LinkStatistics and EdgeTX sync packets.
     maxPeriodBytes = std::min((int)(UARTrequestedBaud / 10 / (1000000/RequestedRCpacketIntervalUS) * 87 / 100), HANDSET_TELEMETRY_FIFO_SIZE);
     // Maximum number of bytes we can send in a single window, half the period bytes, upto one full CRSF packet.
     maxPacketBytes = std::min(maxPeriodBytes - max(maxPeriodBytes / 2, LUA_CHUNK_QUERY_SIZE), CRSF_MAX_PACKET_LEN);
@@ -530,35 +556,64 @@ uint32_t CRSFHandset::autobaud()
 {
     static enum { INIT, MEASURED, INVERTED } state;
 
-    if (state == MEASURED) {
+    if (state == MEASURED)
+    {
         UARTinverted = !UARTinverted;
         state = INVERTED;
         return UARTrequestedBaud;
     }
-    if (state == INVERTED) {
+    if (state == INVERTED)
+    {
         UARTinverted = !UARTinverted;
         state = INIT;
     }
 
-    if (REG_GET_BIT(UART_AUTOBAUD_REG(0), UART_AUTOBAUD_EN) == 0) {
-        REG_WRITE(UART_AUTOBAUD_REG(0), 4 << UART_GLITCH_FILT_S | UART_AUTOBAUD_EN);    // enable, glitch filter 4
+#if defined(PLATFORM_ESP32_S3)
+    if (REG_GET_BIT(UART_CONF0_REG(0), UART_AUTOBAUD_EN) == 0)
+#else
+    if (REG_GET_BIT(UART_AUTOBAUD_REG(0), UART_AUTOBAUD_EN) == 0)
+#endif	
+    {
+#if defined(PLATFORM_ESP32_S3)
+        REG_WRITE(UART_RX_FILT_REG(0), (4 << UART_GLITCH_FILT_S) | UART_GLITCH_FILT_EN); // enable, glitch filter 4
+        REG_WRITE(UART_LOWPULSE_REG(0), 4095); // reset register to max value
+        REG_WRITE(UART_HIGHPULSE_REG(0), 4095); // reset register to max value
+        REG_SET_BIT(UART_CONF0_REG(0), UART_AUTOBAUD_EN); // enable autobaud
+#else	
+        REG_WRITE(UART_AUTOBAUD_REG(0), 4 << UART_GLITCH_FILT_S | UART_AUTOBAUD_EN); // enable, glitch filter 4
+#endif		
         return 400000;
     }
+#if defined(PLATFORM_ESP32_S3)
+    if (REG_GET_BIT(UART_CONF0_REG(0), UART_AUTOBAUD_EN) && REG_READ(UART_RXD_CNT_REG(0)) < 300)
+#else    
     if (REG_GET_BIT(UART_AUTOBAUD_REG(0), UART_AUTOBAUD_EN) && REG_READ(UART_RXD_CNT_REG(0)) < 300)
+#endif    
     {
         return 400000;
     }
 
     state = MEASURED;
 
+#if defined(PLATFORM_ESP32_S3)
+    const uint32_t low_period  = REG_READ(UART_LOWPULSE_REG(0));
+    const uint32_t high_period = REG_READ(UART_HIGHPULSE_REG(0));
+    REG_CLR_BIT(UART_CONF0_REG(0), UART_AUTOBAUD_EN); // disable autobaud
+    REG_CLR_BIT(UART_RX_FILT_REG(0), UART_GLITCH_FILT_EN); // disable glitch filtering
+
+    // According to the technical reference
+    const int32_t calculatedBaud = UART_CLK_FREQ / (low_period + high_period + 2);
+#else
     auto low_period  = (int32_t)REG_READ(UART_LOWPULSE_REG(0));
     auto high_period = (int32_t)REG_READ(UART_HIGHPULSE_REG(0));
-    REG_CLR_BIT(UART_AUTOBAUD_REG(0), UART_AUTOBAUD_EN);   // disable autobaud
+    REG_CLR_BIT(UART_AUTOBAUD_REG(0), UART_AUTOBAUD_EN); // disable autobaud
+
 
     // sample code at https://github.com/espressif/esp-idf/issues/3336
     // says baud rate = 80000000/min(UART_LOWPULSE_REG, UART_HIGHPULSE_REG);
     // Based on testing use max and add 2 for lowest deviation
     int32_t calculatedBaud = 80000000 / (max(low_period, high_period) + 3);
+#endif
     auto bestBaud = TxToHandsetBauds[0];
     for(int TxToHandsetBaud : TxToHandsetBauds)
     {
@@ -573,12 +628,10 @@ uint32_t CRSFHandset::autobaud()
 bool CRSFHandset::UARTwdt()
 {
     bool retval = false;
-    uint32_t now = millis();
-    if (now - UARTwdtLastChecked > UARTwdtInterval)
+    uint32_t nowMS = millis();
+    if (nowMS - UARTwdtLastCheckedMS > UARTwdtIntervalMS)
     {
-        // If no packets or more bad than good packets, rate cycle/autobaud the UART but
-        // do not adjust the parameters while in wifi mode. If a firmware is being
-        // uploaded, it will cause tons of serial errors during the flash writes
+        // If no packets or more bad than good packets, rate cycle/autobaud the UART
         if (BadPktsCount >= GoodPktsCount || !controllerConnected)
         {
             if (controllerConnected)
@@ -605,13 +658,15 @@ bool CRSFHandset::UARTwdt()
             retval = true;
         }
 
-        UARTwdtLastChecked = now;
+        UARTwdtLastCheckedMS = nowMS;
         if (retval)
         {
             // Speed up the cycling
-            UARTwdtLastChecked -= 3 * (UARTwdtInterval >> 2);
+            UARTwdtLastCheckedMS -= 3 * (UARTwdtIntervalMS >> 2);
         }
 
+        GoodPktsCountResult = GoodPktsCount;
+        BadPktsCountResult = BadPktsCount;
         BadPktsCount = 0;
         GoodPktsCount = 0;
     }

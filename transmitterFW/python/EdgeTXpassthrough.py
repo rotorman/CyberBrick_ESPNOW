@@ -1,7 +1,9 @@
+#!/usr/bin/python
 """
-This file belongs to the CyberBrick ESP-NOW transmitter & receiver project, hosted originally at:
+This file belongs to the CyberBrick ESP-NOW transmitter & receiver project,
+hosted originally at:
 https://github.com/rotorman/CyberBrick_ESPNOW
-Copyright (C) 2025, Risto Kõiva
+Copyright (C) 2025, Risto Koiva
 
 Large parts of the code are based on the wonderful ExpressLRS project:
 https://github.com/ExpressLRS/ExpressLRS
@@ -23,7 +25,6 @@ import serial, time, sys
 import argparse
 import serials_find
 import external.streamexpect as streamexpect
-
 
 def dbg_print(line=''):
     sys.stdout.write(line + '\n')
