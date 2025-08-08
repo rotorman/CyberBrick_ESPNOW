@@ -19,33 +19,34 @@
  * GNU General Public License for more details.
  */
 
-#include "crc.h"
+#pragma once
 
-GENERIC_CRC8::GENERIC_CRC8(uint8_t poly)
+#include <stdint.h>
+#include <cstddef>
+
+#define RESERVED_EEPROM_SIZE 1024
+
+class ESPNOW_EEPROM
 {
-    uint8_t crc;
+public:
+    void Begin();
+    uint8_t ReadByte(const uint32_t address);
+    void WriteByte(const uint32_t address, const uint8_t value);
+    void Commit();
 
-    for (uint16_t i = 0; i < crclen; i++)
+    // The extEEPROM lib that we use for STM doesn't have the get and put templates
+    // These templates need to be reimplemented here
+    template <typename T> void Get(uint32_t addr, T &value)
     {
-        crc = i;
-        for (uint8_t j = 0; j < 8; j++)
-        {
-            crc = (crc << 1) ^ ((crc & 0x80) ? poly : 0);
-        }
-        crc8tab[i] = crc & 0xFF;
-    }
-}
+        uint8_t* p = (uint8_t*)(void*)&value;
+        size_t   i = sizeof(value);
+        while(i--)  *p++ = ReadByte(addr++);
+    };
 
-uint8_t ICACHE_RAM_ATTR GENERIC_CRC8::calc(const uint8_t data)
-{
-    return crc8tab[data];
-}
-
-uint8_t ICACHE_RAM_ATTR GENERIC_CRC8::calc(const uint8_t *data, uint16_t len, uint8_t crc)
-{
-    while (len--)
+    template <typename T> const void Put(uint32_t addr, const T &value)
     {
-        crc = crc8tab[crc ^ *data++];
-    }
-    return crc;
-}
+        const uint8_t* p = (const uint8_t*)(const void*)&value;
+        size_t         i = sizeof(value);
+        while(i--)  WriteByte(addr++, *p++);
+    };
+};

@@ -21,10 +21,10 @@
 
 #pragma once
 
-#include "common.h"
+#include "targets.h"
 #include <stdio.h>
 
-#define TimerIntervalUSDefault 20000
+#define TimerIntervalUSDefault 4000
 
 /**
  * @brief Hardware abstraction for the hardware timer to provide precise timing.

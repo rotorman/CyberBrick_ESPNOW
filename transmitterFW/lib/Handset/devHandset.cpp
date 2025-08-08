@@ -4,7 +4,7 @@
  * Copyright (C) 2025, Risto Kõiva
  *
  * Large parts of the code are based on the wonderful ExpressLRS project:
- * https://github.com/ExpressLRS/ExpressLRS and https://github.com/ExpressLRS/targets
+ * https://github.com/ExpressLRS/ExpressLRS
  *
  * License GPL-3.0: https://www.gnu.org/licenses/gpl-3.0.html
  *
@@ -19,16 +19,40 @@
  * GNU General Public License for more details.
  */
 
-/* I/O definitions for ESP32DevKitCv4
-   https://www.az-delivery.de/en/products/esp-32-dev-kit-c-v4
-   https://docs.platformio.org/en/stable/boards/espressif32/az-delivery-devkit-v4.html
- */
+#include "targets.h"
+#include "CRSF.h"
+#include "CRSFHandset.h"
+#include "devHandset.h"
 
-#ifndef MODULE_IO_DEFINITIONS_H
-#define MODULE_IO_DEFINITIONS_H
+Handset *handset;
 
-// Communication with the handset
-#define GPIO_PIN_RCSIGNAL_RX_IN 16
-#define GPIO_PIN_RCSIGNAL_TX_OUT 17
+static bool initialize()
+{
+    handset = new CRSFHandset();
+    return true;
+}
 
-#endif // MODULE_IO_DEFINITIONS_H
+static int start()
+{
+    handset->Begin();
+    return DURATION_IMMEDIATELY;
+}
+
+static int timeout()
+{
+    handset->handleInput();
+    return DURATION_IMMEDIATELY;
+}
+
+static int event()
+{
+    return DURATION_IGNORE;
+}
+
+device_t Handset_device = {
+    .initialize = initialize,
+    .start = start,
+    .event = event,
+    .timeout = timeout,
+    .subscribe = EVENT_POWER_CHANGED
+};

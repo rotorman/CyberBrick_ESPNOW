@@ -19,33 +19,17 @@
  * GNU General Public License for more details.
  */
 
-#include "crc.h"
+#pragma once
+#include <Arduino.h>
 
-GENERIC_CRC8::GENERIC_CRC8(uint8_t poly)
-{
-    uint8_t crc;
+#define UNDEF_PIN (-1)
 
-    for (uint16_t i = 0; i < crclen; i++)
-    {
-        crc = i;
-        for (uint8_t j = 0; j < 8; j++)
-        {
-            crc = (crc << 1) ^ ((crc & 0x80) ? poly : 0);
-        }
-        crc8tab[i] = crc & 0xFF;
-    }
-}
+/////////////////////////
 
-uint8_t ICACHE_RAM_ATTR GENERIC_CRC8::calc(const uint8_t data)
-{
-    return crc8tab[data];
-}
+#define WORD_ALIGNED_ATTR __attribute__((aligned(4)))
 
-uint8_t ICACHE_RAM_ATTR GENERIC_CRC8::calc(const uint8_t *data, uint16_t len, uint8_t crc)
-{
-    while (len--)
-    {
-        crc = crc8tab[crc ^ *data++];
-    }
-    return crc;
-}
+#undef ICACHE_RAM_ATTR //fix to allow both esp32 and esp8266 to use ICACHE_RAM_ATTR for mapping to IRAM
+#define ICACHE_RAM_ATTR IRAM_ATTR
+
+#include <soc/uart_pins.h>
+#include "hardware.h"

@@ -1,7 +1,9 @@
+#!/usr/bin/python
 """
-This file belongs to the CyberBrick ESP-NOW transmitter & receiver project, hosted originally at:
+This file belongs to the CyberBrick ESP-NOW transmitter & receiver project,
+hosted originally at:
 https://github.com/rotorman/CyberBrick_ESPNOW
-Copyright (C) 2025, Risto Kõiva
+Copyright (C) 2025, Risto Koiva
 
 Large parts of the code are based on the wonderful ExpressLRS project:
 https://github.com/ExpressLRS/ExpressLRS
@@ -22,7 +24,6 @@ GNU General Public License for more details.
 import serial
 import sys, glob
 
-
 def serial_ports():
     """ Lists serial port names
 
@@ -40,7 +41,7 @@ def serial_ports():
             print("  ** Searching for EdgeTX radios **")
             __ports = list(comports())
             for port in __ports:
-                if (port.product and "STM32" in port.product) or (port.vid and port.vid == 0x0483):
+                if (port.manufacturer and port.manufacturer in ['FTDI', ]) or (port.vid and port.vid == 0x0483):
                     print("      > EdgeTX radio found from '%s'" % port.device)
                     ports.append(port.device)
     except ImportError:

@@ -31,7 +31,7 @@
 
 #pragma once
 
-#include "common.h"
+#include "targets.h"
 
 /**
  * @brief A FIFO which can be made thread/SMP safe using coarse-grained locking via `lock`/`unlock` methods.

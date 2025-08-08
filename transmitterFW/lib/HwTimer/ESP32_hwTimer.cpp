@@ -30,15 +30,13 @@ volatile uint32_t hwTimer::HWtimerIntervalUS = TimerIntervalUSDefault;
 static hw_timer_t *timer = NULL;
 static portMUX_TYPE isrMutex = portMUX_INITIALIZER_UNLOCKED;
 
-#define HWTIMER_TICKS_PER_US 1
-
 void ICACHE_RAM_ATTR hwTimer::init(void (*callbackf)())
 {
     if (!timer)
     {
         hwTimer::callbackFunc = callbackf;
-        timer = timerBegin(0, (APB_CLK_FREQ / 1000000 / HWTIMER_TICKS_PER_US), true);
-        timerAttachInterrupt(timer, hwTimer::callback, true);		
+        timer = timerBegin(0, (APB_CLK_FREQ / 1000000), true);
+        timerAttachInterrupt(timer, hwTimer::callback, true);
     }
 }
 
@@ -47,7 +45,7 @@ void ICACHE_RAM_ATTR hwTimer::stop()
     if (timer && running)
     {
         running = false;
-		timerAlarmDisable(timer);
+        timerAlarmDisable(timer);
     }
 }
 
@@ -55,7 +53,7 @@ void ICACHE_RAM_ATTR hwTimer::resume()
 {
     if (timer && !running)
     {
-        // The timer must be restarted so that the new period is set.
+        // The timer must be restarted so that the new timerAlarmWrite() period is set.
         timerRestart(timer);
         timerAlarmWrite(timer, HWtimerIntervalUS, true);
         running = true;
@@ -69,7 +67,7 @@ void ICACHE_RAM_ATTR hwTimer::updateIntervalUS(uint32_t timeUS)
     HWtimerIntervalUS = timeUS;
     if (timer)
     {
-		timerAlarmWrite(timer, HWtimerIntervalUS, true);
+        timerAlarmWrite(timer, HWtimerIntervalUS, true);
     }
 }
 

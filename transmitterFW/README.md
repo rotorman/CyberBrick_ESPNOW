@@ -6,38 +6,12 @@ As a first step you should try to build std. ExpressLRS firmware with Visual Stu
 
 <img src="https://www.expresslrs.org/assets/external/raw.githubusercontent.com/ExpressLRS/ExpressLRS-hardware/master/img/hardware.png" height="65px"> <img src="https://i0.wp.com/randomnerdtutorials.com/wp-content/uploads/2020/01/esp-now-logo.png" height="65px"> <img src="https://avatars.githubusercontent.com/u/64278475" height="65px"> <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/9/9a/Visual_Studio_Code_1.35_icon.svg/250px-Visual_Studio_Code_1.35_icon.svg.png" height="65px"> <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/c/cd/PlatformIO_logo.svg/500px-PlatformIO_logo.svg.png" height="65px"> <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/87/Arduino_Logo.svg/330px-Arduino_Logo.svg.png" height="65px"> <img src="https://raw.githubusercontent.com/EdgeTX/edgetx/refs/heads/main/companion/src/images/icon.png" height="65px">
 
-The code supports following handsets running [EdgeTX](https://edgetx.org/) (radios listed alphabetically):
+The code should work with any (internal or external) [ExpressLRS transmitter module](https://www.expresslrs.org/hardware/hardware-selection/#transmitter-selection) with an ESP32 or ESP32-S3 microcontroller paired with an arbitrary [EdgeTX](https://edgetx.org/) handset able to talk with ExpressLRS module(s).
 
-* [HelloRadioSky V14](https://www.helloradiosky.com/)
-* [HelloRadioSky V16](https://www.helloradiosky.com/)
-* [Jumper T-14 with 900 MHz and 2.4 GHz internal ELRS modules](https://www.jumper-rc.com/transmitters/t14-3/)
-* [Jumper T-15 with 900 MHz and 2.4 GHz internal ELRS modules](https://www.jumper-rc.com/transmitters/t15/)
-* [Jumper T20 and T20v2, both with 900MHz and 2.4 GHz internal ELRS modules and T20 Gemini](https://www.jumper-rc.com/transmitters/t20-2/)
-* [Jumper T-Lite](https://www.jumper-rc.com/transmitters/t-lite-v2/)
-* [Jumper T-Pro with 900 MHz and 2.4 GHz internal ELRS modules](https://www.jumper-rc.com/transmitters/)
-* [Jumper T-Pro S with 900 MHz and 2.4 GHz internal ELRS modules](https://www.jumper-rc.com/transmitters/t-pro-s-2/)
-* [RadioMaster Boxer with internal ELRS module](https://radiomasterrc.com/products/boxer-radio-controller-m2)
-* [RadioMaster MT12 with internal ELRS module](https://radiomasterrc.com/products/mt12-surface-radio-controller)
-* [RadioMaster Pocket with internal ELRS module](https://radiomasterrc.com/products/pocket-radio-controller-m2)
-* [RadioMaster TX12 mkII with internal ELRS module](https://radiomasterrc.com/products/tx12-mark-ii-radio-controller)
-* [RadioMaster TX16s mkII with internal ELRS module](https://radiomasterrc.com/products/tx16s-mark-ii-radio-controller)
-* [RadioMaster Zorro with internal ELRS module](https://radiomasterrc.com/products/zorro-radio-controller?variant=46486367371456)
+Flashing the internal ExpressLRS module(s) is possible via EdgeTX passthrough (triggered in the background while uploading firmware from VSCode and PlatformIO by [Python script](https://github.com/rotorman/CyberBrick_ESPNOW/transmitterFW/python/EdgeTXpassthrough.py)). External modules can be flashed via UART. Some (external) modules come with an integrated USB-to-serial adapter, others might need an external adapter, like [FTDI](https://www.sparkfun.com/ftdi-cable-5v-vcc-3-3v-i-o.html) or [Silabs CP2102](https://betafpv.com/collections/expresslrs-series-accessories/products/expresslrs-recovery-dongle), to flash them.
 
-The code supports following external RF modules (modules listed alphabetically):
+NOTE! In order for the transmitter and receiver units to successfully talk to each other, they need to be paired using the Bind function of the [Lua script](https://github.com/rotorman/CyberBrick_ESPNOW/tree/main/transmitterLua) while pressing the USER KEY button on the CyberBrick Core, after the [MicroPython ESPNOW reception code](https://github.com/rotorman/CyberBrick_ESPNOW/tree/main/receiverPY) from this repository has been copied to it.
 
-* [BetaFPV Micro 2.4 GHz](https://betafpv.com/collections/expresslrs-series-accessories/products/elrs-micro-tx-module)
-* [BetaFPV Micro 1W 2.4 GHz](https://betafpv.com/collections/expresslrs-series-accessories/products/elrs-micro-tx-module)
-* [HappyModel ES24](https://www.happymodel.cn/index.php/2021/04/12/happymodel-2-4g-expresslrs-elrs-micro-tx-module-es24tx/)
-* [HappyModel ES24 Pro](https://www.happymodel.cn/index.php/2021/11/11/happymodel-es24tx-pro-micro-expresslrs-elrs-tx-module/)
-* [Jumper AION Nano](https://www.jumper-rc.com/modules/jumper-2-4g-elrs-tx-module/)
-* [RadioMaster Ranger](https://radiomasterrc.com/products/ranger-2-4ghz-elrs-module)
-* [RadioMaster Ranger Micro](https://radiomasterrc.com/products/ranger-micro-2-4ghz-elrs-module)
-* [RadioMaster Ranger Nano](https://radiomasterrc.com/products/ranger-nano-2-4ghz-elrs-module)
+Large parts of the code used in this repository stem from the wonderful [ExpressLRS project](https://github.com/ExpressLRS/ExpressLRS/).
 
-Flashing the internal ExpressLRS module(s) is possible via EdgeTX passthrough (triggered in the background while uploading firmware from VSCode and PlatformIO by [Python script](https://github.com/rotorman/CyberBrick_ESPNOW/transmitterFW/python/EdgeTXpassthrough.py)). External modules can be flashed via UART (via USB-to-serial adapter).
-
-**NOTE!** In order to successfully bind the EdgeTX radio and the CyberBrick receiver(s), you need to first read out the CyberBrick Core WiFi MAC address(es) and then enter them into the [main.cpp](https://github.com/rotorman/CyberBrick_ESPNOW/blob/main/transmitterFW/src/main.cpp#L41-L43).
-
-Numerous parts of the code used in this repository stem from the wonderful [ExpressLRS project](https://github.com/ExpressLRS/ExpressLRS/).
-
-The original development was carried out using an [ESP32DevKitCv4](https://www.az-delivery.de/en/products/esp-32-dev-kit-c-v4), paired with a radio running [EdgeTX](https://edgetx.org/) firmware. The code is setup for in-circuit-debugging with [ESP-Prog](https://docs.espressif.com/projects/esp-iot-solution/en/latest/hw-reference/ESP-Prog_guide.html) on ESP32DevKitCv4 target. You can find more info about this in the [Wiki section](https://github.com/rotorman/CyberBrick_ESPNOW/wiki/In%E2%80%90Circuit%E2%80%90Debugging), incl. a detailed hookup scheme.
+I have tested the code with RadioMaster TX16s mkII with internal ExpressLRS module, RadioMaster MT12 with internal 2.4 GHz ExpressLRS module, Jumper T15 with internal 2.4 GHz ExpressLRS module, external HappyModel ES24TX Pro module, external RadioMaster Ranger module and also with an ESP32 development kit (ESP32DevKitCv4).

@@ -25,69 +25,138 @@
    You can use any in EdgeTX selectable baud rate.
 */
 
+#include "targets.h"
+#include "common.h"
+#include "config.h"
+#include "CRSF.h"
+#include "helpers.h"
+#include "hwTimer.h"
+#include "CRSFHandset.h"
+#include "lua.h"
+#include "devHandset.h"
 #include <esp_now.h>
 #include <esp_wifi.h>
 #include <WiFi.h>
-#include "common.h"
-#include "CRSFHandset.h"
-#include "UnusedPeriph.h"
-#include "hwTimer.h"
 
-/***** TODO! Adjust the values in this section to YOUR setup! *****/
+#define RF_RC_INTERVAL_US 20000U // 50 Hz
+#define CONNECTIONLOSTTIMEOUT_MS 200
+#define TLM_REPORT_INTERVAL_MS 240U
 
-// Model receiver's MAC address(es) - replace with YOUR CyberBrick receiver Core MAC address(es)!
-// The example below lists 3 models. If you wish to control only one model, remove the bottom two lines (models 1 and 2).
-// You can control/add up to 20 models to the list below (limitation of ESP32 ESP-NOW peer address table).
-uint8_t cyberbrickRxMAC[][6] =
-  {
-    {0xa1, 0xb1, 0xc1, 0xd1, 0xe1, 0xf1}, // Model 0 receiver MAC address
-    {0xa2, 0xb2, 0xc2, 0xd2, 0xe2, 0xf2}, // Model 1 receiver MAC address
-    {0xa3, 0xb3, 0xc3, 0xd3, 0xe3, 0xf3}  // Model 2 receiver MAC address
-  };
-// You can pick a model to control in EdgeTX under:
-// MODEL -> Internal RF or External RF -> Receiver <number>
-// where the number matches the model number in the above list.
+const uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
-/******************************************************************/
+/// define some libs to use ///
+ESPNOW_EEPROM eeprom;
+TxConfig config;
 
-// The following is replied in a CRSF ping response telegram to the handset and
-// displayed as a module identification in EdgeTX under:
-// System -> About -> Modules / RX version
-const char device_name[] = "CyberBrick TX"; // max. 16 characters
-char versionID[] = "1.0.0";
+// Connection state information
+bool connectionHasModelMatch = false;
+bool InBindingMode = false;
+connectionState_e connectionState = RECEIVERDISCONNECTED;
 
 // Current state of channels, CRSF format
 volatile uint16_t ChannelData[CRSF_NUM_CHANNELS];
-connectionState_e connectionState = awatingFirstPacket;
 
-CRSFHandset *handset = new CRSFHandset();
+extern device_t LUA_device;
+uint32_t TLMpacketReportedMS = 0;
+
+static bool commitInProgress = false;
+volatile bool busyTransmitting = false;
+static volatile bool ModelUpdatePending = false;
+static volatile unsigned long uiLastESPNOWsentOKMS = 0;
+static volatile bool bBindModeMACreceived = false;
+
 esp_now_peer_info_t peerInfo;
 
-bool SendRCdataToRF();
-void timerCallback();
+device_affinity_t ui_devices[] = {
+  {&Handset_device, 1},
+  {&LUA_device, 1},
+};
+
+bool setupHardwareFromOptions();
 bool initESPNOW();
 void ESPNOW_OnDataSentCB(const uint8_t *mac_addr, esp_now_send_status_t status);
+void EnterBindingMode();
+static void CheckConfigChangePending();
+static void ConfigChangeCommit();
+void ICACHE_RAM_ATTR OnESPNOWBindDataRecv(const uint8_t * mac_addr, const uint8_t *data, int data_len);
+void ModelUpdateReq();
 static void UARTconnected();
 static void UARTdisconnected();
-void ModelUpdateReq();
+void ICACHE_RAM_ATTR timerCallback();
 
-// Initialization
-void setup() {
+void setup()
+{
   pinMode(GPIO_PIN_BOOT0, INPUT); // setup so that we can detect pin-change for passthrough mode of the optional ExpressLRS module backpack
-  initUnusedDevices();
-  handset->Begin();
-  handset->registerCallbacks(UARTconnected, UARTdisconnected, ModelUpdateReq);
+  if (setupHardwareFromOptions())
+  {
+    // Register the devices with the framework
+    devicesRegister(ui_devices, ARRAY_SIZE(ui_devices));
+    // Initialise the devices
+    devicesInit();
 
-  while (!initESPNOW()) {}
-  hwTimer::init(timerCallback);
-  hwTimer::updateIntervalUS(RF_FRAME_RATE_US);
-  setConnectionState(awatingFirstPacket);
+    handset->registerCallbacks(UARTconnected, UARTdisconnected, ModelUpdateReq, EnterBindingMode);
+
+    eeprom.Begin(); // Init the eeprom
+    config.SetStorageProvider(&eeprom); // Pass pointer to the Config class for access to storage
+    config.Load(); // Load the stored values from eeprom
+
+    bool init_success = true;
+
+    if (!init_success)
+    {
+      setConnectionState(radioFailed);
+    }
+    else
+    {
+      hwTimer::updateIntervalUS(RF_RC_INTERVAL_US);
+      handset->setPacketIntervalUS(RF_RC_INTERVAL_US);
+      hwTimer::init(timerCallback);
+      setConnectionState(noHandsetCommunication);
+    }
+  }
+
+  devicesStart();
 }
 
-// Main execution loop
-void loop() {
-  handset->handleInput();
-  delay(1); // yield
+void loop()
+{
+  uint32_t nowMS = millis();
+
+  // Update UI devices
+  devicesUpdate(nowMS);
+
+  if (connectionState > MODE_STATES)
+  {
+    return;
+  }
+
+  CheckConfigChangePending();
+
+  /* Send TLM updates to handset if connected + reporting period
+   * is elapsed. This keeps handset happy dispite of the telemetry ratio */
+  if ((connectionState == RECEIVERCONNECTED) && (uiLastESPNOWsentOKMS != 0) &&
+      (nowMS >= (uint32_t)(TLM_REPORT_INTERVAL_MS + TLMpacketReportedMS)))
+  {
+    uint8_t linkStatisticsFrame[CRSF_FRAME_NOT_COUNTED_BYTES + CRSF_FRAME_SIZE(sizeof(crsfLinkStatistics_t))];
+
+    CRSFHandset::makeLinkStatisticsPacket(linkStatisticsFrame);
+    handset->sendTelemetryToTX(linkStatisticsFrame);
+    TLMpacketReportedMS = nowMS;
+  }
+}
+
+bool setupHardwareFromOptions()
+{
+  if (!options_init())
+  {
+    setConnectionState(hardwareUndefined);
+    return false;
+  }
+
+  // TODO! Add timeout or bailout
+  while (!initESPNOW()) {}
+
+  return true;
 }
 
 bool initESPNOW()
@@ -106,21 +175,28 @@ bool initESPNOW()
     ESP.restart();
   }
 
-  // Register peers
+  // Register model MAC as peer
   memset(&peerInfo, 0, sizeof(esp_now_peer_info_t));
   peerInfo.channel = 0;
-  peerInfo.encrypt = false;  
+  peerInfo.encrypt = false;
   bool bResult = true;
-  for (int i = 0; i < sizeof(cyberbrickRxMAC)/6; i++)
-  { 
-    // Iterate through the peer addresses
-    memcpy(peerInfo.peer_addr, cyberbrickRxMAC[i], 6);
-    if (esp_now_add_peer(&peerInfo) != ESP_OK)
-    {
-      bResult = false;
-    }
+
+  // Extract model MAC address
+  uint8_t peerMAC[6];
+  uint64_t currentModelMAC = config.GetModelMAC();
+  peerMAC[0] = (uint8_t)((currentModelMAC & 0x0000FF0000000000)>>40);
+  peerMAC[1] = (uint8_t)((currentModelMAC & 0x000000FF00000000)>>32);
+  peerMAC[2] = (uint8_t)((currentModelMAC & 0x00000000FF000000)>>24);
+  peerMAC[3] = (uint8_t)((currentModelMAC & 0x0000000000FF0000)>>16);
+  peerMAC[4] = (uint8_t)((currentModelMAC & 0x000000000000FF00)>>8);
+  peerMAC[5] = (uint8_t)((currentModelMAC & 0x00000000000000FF));
+
+  memcpy(peerInfo.peer_addr, peerMAC, 6);
+  if (esp_now_add_peer(&peerInfo) != ESP_OK)
+  {
+    bResult = false;
   }
-  
+
   // Register callback to get the status of the transmitted ESP-NOW packet
   if (esp_now_register_send_cb(ESPNOW_OnDataSentCB) != ESP_OK)
     bResult = false;
@@ -128,69 +204,192 @@ bool initESPNOW()
   return bResult;
 }
 
-/*
- * Called from timer ISR when there is a CRSF connection from the handset
- */
-void ICACHE_RAM_ATTR timerCallback()
-{
-  // Do not transmit until in disconnected/connected state
-  if (connectionState == awaitingModelId)
-    return;
-
-  SendRCdataToRF();
-}
-
-bool ICACHE_RAM_ATTR SendRCdataToRF()
-{
-  // Send message via ESP-NOW
-  uint8_t modelid = handset->getModelID();
-  bool bResult = false;
-  if (modelid <= sizeof(cyberbrickRxMAC)/6) // Plausibility check that we are not accessing cyberbrickRxMAC array out of bounds
-  {
-    esp_err_t result = esp_now_send(cyberbrickRxMAC[modelid], (uint8_t *) &ChannelData, sizeof(ChannelData));
-   
-    if (result == ESP_OK) {
-      bResult = true;
-    }
-  }
-  return bResult;
-}
-
 // ESP-NOW callback, called when data is sent
 void ESPNOW_OnDataSentCB(const uint8_t *mac_addr, esp_now_send_status_t status) {
+  uint32_t const now = millis();
   if (status == ESP_NOW_SEND_SUCCESS)
   {
-    handset->JustSentRFpacket();
+    connectionHasModelMatch = true;
+    uiLastESPNOWsentOKMS = now;
+    setConnectionState(RECEIVERCONNECTED);
   }
+  else
+  {
+    if (now > (uiLastESPNOWsentOKMS + CONNECTIONLOSTTIMEOUT_MS))
+    {
+      setConnectionState(RECEIVERDISCONNECTED);
+    }
+  }
+  busyTransmitting = false;
+}
+
+void EnterBindingMode()
+{
+  if (InBindingMode)
+      return;
+
+  // Disable the TX timer and wait for any TX to complete
+  //hwTimer::stop();
+  while (busyTransmitting);
+
+  InBindingMode = true;
+
+  // Clear previous ESP-NOW entry
+  uint8_t peerMAC[6];
+  uint64_t currentModelMAC = config.GetModelMAC();
+  peerMAC[0] = (uint8_t)((currentModelMAC & 0x0000FF0000000000)>>40);
+  peerMAC[1] = (uint8_t)((currentModelMAC & 0x000000FF00000000)>>32);
+  peerMAC[2] = (uint8_t)((currentModelMAC & 0x00000000FF000000)>>24);
+  peerMAC[3] = (uint8_t)((currentModelMAC & 0x0000000000FF0000)>>16);
+  peerMAC[4] = (uint8_t)((currentModelMAC & 0x000000000000FF00)>>8);
+  peerMAC[5] = (uint8_t)((currentModelMAC & 0x00000000000000FF));
+  memcpy(peerInfo.peer_addr, peerMAC, 6);
+  esp_now_del_peer(peerInfo.peer_addr);
+
+  // Add broadcast address as peer to receive binding info without filter
+  memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+  esp_now_add_peer(&peerInfo);
+  bBindModeMACreceived = false;
+  // Register receive callback
+  esp_now_register_recv_cb(OnESPNOWBindDataRecv);
+}
+
+static void CheckConfigChangePending()
+{
+  if (config.IsModified() || ModelUpdatePending)
+  {
+    // wait until no longer transmitting
+    while (busyTransmitting);
+    // Set the commitInProgress flag to prevent any other RF SPI traffic during the commit from RX or scheduled TX
+    commitInProgress = true;
+    ConfigChangeCommit();
+  }
+}
+
+static void ConfigChangeCommit()
+{
+  // Write the uncommitted eeprom values (may block for a while)
+  uint32_t changes = config.Commit();
+  // Clear the commitInProgress flag so normal processing resumes
+  commitInProgress = false;
+  // UpdateFolderNames is expensive so it is called directly instead of in event() which gets called a lot
+  devicesTriggerEvent(changes);
+}
+
+void ICACHE_RAM_ATTR OnESPNOWBindDataRecv(const uint8_t * mac_addr, const uint8_t *data, int data_len)
+{
+  if (InBindingMode && !bBindModeMACreceived && (data_len == 6))
+  {
+    memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+    esp_now_del_peer(peerInfo.peer_addr);
+    
+    uint64_t receivedMAC = ((uint64_t)(data[0])<<40) +
+                           ((uint64_t)(data[1])<<32) +
+                           ((uint64_t)(data[2])<<24) +
+                           ((uint64_t)(data[3])<<16) +
+                           ((uint64_t)(data[4])<<8) +
+                           (uint64_t)(data[5]);
+    config.SetModelMAC(receivedMAC);
+    ModelUpdatePending = true;
+
+    bBindModeMACreceived = true;
+
+    // Exit binding mode
+    if (!InBindingMode)
+      return;
+
+    InBindingMode = false;
+    setConnectionState(RECEIVERDISCONNECTED);
+  }
+}
+
+void ModelUpdateReq()
+{
+  // Force synspam with the current rate parameters in case already have a connection established
+  if (config.SetModelId(CRSFHandset::getModelID()))
+  {
+    ModelUpdatePending = true;
+  }
+
+  devicesTriggerEvent(EVENT_MODEL_SELECTED);
+
+  // Jump from AWAITINGMODELIDFROMHANDSET to transmitting to break the startup delay now
+  // that the ModelID has been confirmed by the handset
+  if (connectionState == AWAITINGMODELIDFROMHANDSET)
+  {
+    setConnectionState(RECEIVERDISCONNECTED);
+  }
+}
+
+static void UARTconnected()
+{
+  if (connectionState == noHandsetCommunication || connectionState < MODE_STATES)
+  {
+    // When CRSF first connects, always go into a brief delay before
+    // starting to transmit, to make sure a ModelID update isn't coming
+    // right behind it
+    setConnectionState(AWAITINGMODELIDFROMHANDSET);
+  }
+
+  // But start the timer to get EdgeTX sync going and a ModelID update sent
+  hwTimer::resume();
 }
 
 static void UARTdisconnected()
 {
   hwTimer::stop();
-  setConnectionState(disconnected);
+  setConnectionState(noHandsetCommunication);
 }
 
-static void UARTconnected()
+// Called as the timer ISR when there is a CRSF connection from the handset
+void ICACHE_RAM_ATTR timerCallback()
 {
-  if (connectionState == disconnected)
-    setConnectionState(connected);
-
-  if (connectionState == awatingFirstPacket)
+  /* If we are busy writing to EEPROM (committing config changes) then we generate no further traffic */
+  if (commitInProgress)
   {
-    // When CRSF first connects, always go into a brief delay before
-    // starting to transmit, to make sure a ModelID update isn't coming
-    // right behind it
-    setConnectionState(awaitingModelId);
+    return;
   }
 
-  // Start the timer to get EdgeTX sync going and a ModelID update sent
-  hwTimer::resume();
-}
+  // Sync EdgeTX to this point
+  handset->JustSentRFpacket();
 
-void ModelUpdateReq()
-{
-  if (connectionState == awaitingModelId)
+  // Do not transmit until in RECEIVERDISCONNECTED/RECEIVERCONNECTED state
+  if (connectionState == AWAITINGMODELIDFROMHANDSET)
+    return;
+
+  // Send RC channels via RF to model
+
+  // Do not send a stale channels packet to the RX if one has not been received from the handset
+  // *Do* send data if a packet has never been received from handset and the timer is running
+  // this is the case when bench testing
+  uint32_t lastRcDataUS = handset->GetRCdataLastRecvUS();
+  if (lastRcDataUS && (micros() - lastRcDataUS > 1000000))
   {
-    setConnectionState(connected);
+    // Do not send stale or fake zero packet RC!
+    return;
+  }
+
+  // Extract model MAC address
+  uint8_t peerMAC[6];
+  uint64_t currentModelMAC = config.GetModelMAC();
+  peerMAC[0] = (uint8_t)((currentModelMAC & 0x0000FF0000000000)>>40);
+  peerMAC[1] = (uint8_t)((currentModelMAC & 0x000000FF00000000)>>32);
+  peerMAC[2] = (uint8_t)((currentModelMAC & 0x00000000FF000000)>>24);
+  peerMAC[3] = (uint8_t)((currentModelMAC & 0x0000000000FF0000)>>16);
+  peerMAC[4] = (uint8_t)((currentModelMAC & 0x000000000000FF00)>>8);
+  peerMAC[5] = (uint8_t)((currentModelMAC & 0x00000000000000FF));
+
+  if (ModelUpdatePending)
+  {
+    memcpy(peerInfo.peer_addr, peerMAC, 6);
+    esp_now_add_peer(&peerInfo);
+    ModelUpdatePending = false;
+  }
+
+  if (!InBindingMode)
+  {
+    busyTransmitting = true;
+    // Send message via ESP-NOW
+    esp_now_send(peerMAC, (uint8_t *) &ChannelData, sizeof(ChannelData));
   }
 }

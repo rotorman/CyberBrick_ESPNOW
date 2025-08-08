@@ -19,33 +19,41 @@
  * GNU General Public License for more details.
  */
 
-#include "crc.h"
+#pragma once
 
-GENERIC_CRC8::GENERIC_CRC8(uint8_t poly)
+#include "targets.h"
+#include "espnow_eeprom.h"
+#include "options.h"
+#include "common.h"
+#include <nvs_flash.h>
+#include <nvs.h>
+
+#define CONFIG_TX_MODEL_CNT 64U // max supported model count of EdgeTX
+
+class TxConfig
 {
-    uint8_t crc;
+public:
+    TxConfig();
+    void Load();
+    uint32_t Commit();
 
-    for (uint16_t i = 0; i < crclen; i++)
-    {
-        crc = i;
-        for (uint8_t j = 0; j < 8; j++)
-        {
-            crc = (crc << 1) ^ ((crc & 0x80) ? poly : 0);
-        }
-        crc8tab[i] = crc & 0xFF;
-    }
-}
+    // Getters
+    uint64_t GetModelMAC() const { return m_model_mac[m_modelId]; }
+    bool     IsModified() const { return m_modified != 0; }
 
-uint8_t ICACHE_RAM_ATTR GENERIC_CRC8::calc(const uint8_t data)
-{
-    return crc8tab[data];
-}
+    // Setters
+    void SetStorageProvider(ESPNOW_EEPROM *eeprom);
+    void SetModelMAC(uint64_t mac);
 
-uint8_t ICACHE_RAM_ATTR GENERIC_CRC8::calc(const uint8_t *data, uint16_t len, uint8_t crc)
-{
-    while (len--)
-    {
-        crc = crc8tab[crc ^ *data++];
-    }
-    return crc;
-}
+    // State setters
+    bool SetModelId(uint8_t modelId);
+
+private:
+    ESPNOW_EEPROM *m_eeprom;
+    uint32_t     m_modified;
+    uint64_t     m_model_mac[CONFIG_TX_MODEL_CNT];
+    uint8_t      m_modelId;
+    nvs_handle   handle;
+};
+
+extern TxConfig config;

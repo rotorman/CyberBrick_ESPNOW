@@ -19,33 +19,40 @@
  * GNU General Public License for more details.
  */
 
-#include "crc.h"
+#include "espnow_eeprom.h"
+#include "targets.h"
+#include <EEPROM.h>
 
-GENERIC_CRC8::GENERIC_CRC8(uint8_t poly)
+void
+ESPNOW_EEPROM::Begin()
 {
-    uint8_t crc;
-
-    for (uint16_t i = 0; i < crclen; i++)
-    {
-        crc = i;
-        for (uint8_t j = 0; j < 8; j++)
-        {
-            crc = (crc << 1) ^ ((crc & 0x80) ? poly : 0);
-        }
-        crc8tab[i] = crc & 0xFF;
-    }
+    EEPROM.begin(RESERVED_EEPROM_SIZE);
 }
 
-uint8_t ICACHE_RAM_ATTR GENERIC_CRC8::calc(const uint8_t data)
+uint8_t
+ESPNOW_EEPROM::ReadByte(const uint32_t address)
 {
-    return crc8tab[data];
+    if (address >= RESERVED_EEPROM_SIZE)
+    {
+        // address is out of bounds
+        return 0;
+    }
+    return EEPROM.read(address);
 }
 
-uint8_t ICACHE_RAM_ATTR GENERIC_CRC8::calc(const uint8_t *data, uint16_t len, uint8_t crc)
+void
+ESPNOW_EEPROM::WriteByte(const uint32_t address, const uint8_t value)
 {
-    while (len--)
+    if (address >= RESERVED_EEPROM_SIZE)
     {
-        crc = crc8tab[crc ^ *data++];
+        // address is out of bounds
+        return;
     }
-    return crc;
+    EEPROM.write(address, value);
+}
+
+void
+ESPNOW_EEPROM::Commit()
+{
+    EEPROM.commit();
 }

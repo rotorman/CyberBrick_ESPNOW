@@ -21,105 +21,55 @@
 
 #pragma once
 
+#include "handset.h"
 #include "crsf_protocol.h"
 #include "HardwareSerial.h"
 #include "common.h"
 #include "driver/uart.h"
 
-class CRSFHandset final
+class CRSFHandset final : public Handset
 {
+
 public:
-    /**
-     * @brief Start the CRSF handset protocol
-     */
-    void Begin();
+    /////Variables/////
+    void Begin() override;
+    void End() override;
 
-    /**
-     * @brief register a function to be called when the protocol has read an RC data packet from the handset
-     * @param callback
-     */
-    void setRCDataCallback(void (*callback)()) { RCdataCallback = callback; }
+    void handleInput() override;
+    void handleOutput(int receivedBytes);
 
-    /**
-     * Register callback functions for state information about the connection or handset
-     * @param connectedCallback called when the protocol detects a stable connection to the handset
-     * @param disconnectedCallback called when the protocol loses its connection to the handset
-     * @param RecvModelUpdateCallback called when the handset sends a message to set the current model number
-     */
-    void registerCallbacks(void (*connectedCallback)(), void (*disconnectedCallback)(), void (*RecvModelUpdateCallback)())
-    {
-        connected = connectedCallback;
-        disconnected = disconnectedCallback;
-        RecvModelUpdate = RecvModelUpdateCallback;
-    }
+    static HardwareSerial Port;
 
-    /**
-     * @brief Process any pending input data from the CRSF handset
-     */
-    void handleInput();
+    static uint8_t modelId;         // The model ID as received from the Transmitter
+    static bool elrsLUAmode;
 
-	void handleOutput(int receivedBytes);
+    static uint32_t GoodPktsCountResult; // need to latch the results
+    static uint32_t BadPktsCountResult;  // need to latch the results
 
-	static HardwareSerial Port;
-	
-	static uint8_t modelId;         // The model ID as received from the handset
-	
     static void makeLinkStatisticsPacket(uint8_t *buffer);
 
     static void packetQueueExtended(uint8_t type, void *data, uint8_t len);
-	
-    /**
-     * @return the maximum number of bytes that the protocol can send to the handset in a single message
-     */
-    uint8_t GetMaxPacketBytes() const { return maxPacketBytes; }
 
-    /**
-     * Depending on the baud-rate selected and the module type (full/half duplex) will determine the minimum
-     * supported packet interval.
-     * @return the minimum interval between packets supported by the current configuration.
-     */
-    int getMinPacketInterval() const;
-
-    /**
-     * @brief Called to indicate to the protocol that a packet has just been sent over-the-air
-     * This is used to synchronise the packets from the handset to the OTA protocol to minimise latency
-     */
-    void JustSentRFpacket();
-
-    /**
-     * Send a telemetry packet back to the handset
-     * @param data
-     */
-	void sendTelemetryToTX(uint8_t *data);
+    void setPacketIntervalUS(int32_t PacketIntervalUS) override;
+    void JustSentRFpacket() override;
+    void sendTelemetryToTX(uint8_t *data) override;
 
     static uint8_t getModelID() { return modelId; }
 
-    /**
-     * @return the time in microseconds when the last RC packet was received from the handset
-     */
-    uint32_t GetRCdataLastRecv() const { return RCdataLastRecv; }
-
-	static uint32_t GetCurrentBaudRate() { return UARTrequestedBaud; }
+    uint8_t GetMaxPacketBytes() const override { return maxPacketBytes; }
+    static uint32_t GetCurrentBaudRate() { return UARTrequestedBaud; }
     static bool isHalfDuplex() { return halfDuplex; }
-	
+    int getMinPacketInterval() const override;
+
 private:
-    bool controllerConnected = false;
-    void (*RCdataCallback)() = nullptr;  // called when there is new RC data
-    void (*disconnected)() = nullptr;    // called when RC packet stream is lost
-    void (*connected)() = nullptr;       // called when RC packet stream is regained
-    void (*RecvModelUpdate)() = nullptr; // called when model id changes, ie command from Radio
-
-    volatile uint32_t RCdataLastRecv = 0;
-    int32_t RequestedRCpacketIntervalUS = RF_FRAME_RATE_US;
-
     inBuffer_U inBuffer = {};
 
     /// EdgeTX mixer sync ///
     volatile uint32_t dataLastRecv = 0;
-    volatile int32_t EdgeTXsyncOffset = 0;
-    volatile int32_t EdgeTXsyncWindow = 0;
-    volatile int32_t EdgeTXsyncWindowSize = 1;
-    uint32_t EdgeTXsyncLastSent = 0;
+    volatile int32_t EdgeTXsyncOffset100NS = 0;
+    volatile int32_t EdgeTXsyncWindowUS = 0;
+    volatile int32_t EdgeTXsyncWindowSizeUS = 0;
+    uint32_t EdgeTXsyncLastSentMS = 0;
 
     /// UART Handling ///
     uint8_t SerialInPacketPtr = 0; // index where we are reading/writing
@@ -127,12 +77,15 @@ private:
     bool transmitting = false;
     uint32_t GoodPktsCount = 0;
     uint32_t BadPktsCount = 0;
-    uint32_t UARTwdtLastChecked = 0;
+    uint32_t UARTwdtLastCheckedMS = 0;
     uint8_t maxPacketBytes = CRSF_MAX_PACKET_LEN;
     uint8_t maxPeriodBytes = CRSF_MAX_PACKET_LEN;
 
+    static uint8_t UARTcurrentBaudIdx;
     static uint32_t UARTrequestedBaud;
+
     bool UARTinverted = false;
+
     void sendSyncPacketToTX();
     void adjustMaxPacketSize();
     void duplex_set_RX() const;
@@ -142,7 +95,7 @@ private:
     void alignBufferToSync(uint8_t startIdx);
     bool ProcessPacket();
     bool UARTwdt();
-    uint32_t autobaud();	
+    uint32_t autobaud();
     void flush_port_input();
 };
 
