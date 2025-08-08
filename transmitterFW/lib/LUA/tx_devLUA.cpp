@@ -160,6 +160,8 @@ static int event()
     return DURATION_NEVER;
   }
 
+  LUA_FIELD_VISIBLE(luaClearMAC, config.GetModelMAC() != ESPNOW_BROADCAST_U64);
+
   return DURATION_IMMEDIATELY;
 }
 
@@ -169,30 +171,23 @@ static int event()
 void luaUpdateMAC()
 {
   uint64_t mac = config.GetModelMAC();
-  if (mac == 0)
+  if (mac == ESPNOW_BROADCAST_U64)
   {
-    sprintf(modelMACca, "Model not bound");
+    sprintf(modelMACca, "Broadcast");
   }
   else
   {
-    if (mac == ESPNOW_BROADCAST_U64)
-    {
-      sprintf(modelMACca, "Broadcast");
-    }
-    else
-    {
-      uint8_t modelMAC[6];
-      modelMAC[0] = (uint8_t)((mac & 0x0000FF0000000000)>>40);
-      modelMAC[1] = (uint8_t)((mac & 0x000000FF00000000)>>32);
-      modelMAC[2] = (uint8_t)((mac & 0x00000000FF000000)>>24);
-      modelMAC[3] = (uint8_t)((mac & 0x0000000000FF0000)>>16);
-      modelMAC[4] = (uint8_t)((mac & 0x000000000000FF00)>>8);
-      modelMAC[5] = (uint8_t)(mac & 0x00000000000000FF);
+    uint8_t modelMAC[6];
+    modelMAC[0] = (uint8_t)((mac & 0x0000FF0000000000)>>40);
+    modelMAC[1] = (uint8_t)((mac & 0x000000FF00000000)>>32);
+    modelMAC[2] = (uint8_t)((mac & 0x00000000FF000000)>>24);
+    modelMAC[3] = (uint8_t)((mac & 0x0000000000FF0000)>>16);
+    modelMAC[4] = (uint8_t)((mac & 0x000000000000FF00)>>8);
+    modelMAC[5] = (uint8_t)(mac & 0x00000000000000FF);
 
-      snprintf(modelMACca, sizeof(modelMACca),
-        "%02X:%02X:%02X:%02X:%02X:%02X",
-        modelMAC[0], modelMAC[1], modelMAC[2], modelMAC[3], modelMAC[4], modelMAC[5]);
-    }
+    snprintf(modelMACca, sizeof(modelMACca),
+      "%02X:%02X:%02X:%02X:%02X:%02X",
+      modelMAC[0], modelMAC[1], modelMAC[2], modelMAC[3], modelMAC[4], modelMAC[5]);
   }
   sendELRSstatus();
 }

@@ -21,48 +21,7 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 """
 
-from enum import Enum
-from typing import NamedTuple
+import binary_configurator
 
-class MCUType(Enum):
-    ESP32 = 0
-    ESP8266 = 1
-
-class DeviceType(Enum):
-    TX = 0
-    RX = 1
-    TX_Backpack = 2
-    VRx_Backpack = 3
-
-class RadioType(Enum):
-    SX127X = 0
-    SX1280 = 1
-    LR1121 = 2
-
-class FirmwareOptions(NamedTuple):
-    mcuType: MCUType
-    deviceType: DeviceType
-    radioChip: RadioType
-    luaName: str
-    bootloader: str
-    offset: int
-    firmware: str
-
-
-class TXType(Enum):
-    internal = 'internal'
-    external = 'external'
-
-    def __str__(self):
-        return self.value
-
-
-def find_patch_location(mm):
-    return mm.find(b'\xBE\xEF\xBA\xBE\xCA\xFE\xF0\x0D')
-
-def get_hardware(mm):
-    pos = mm.find(b'\xBE\xEF\xBA\xBE\xCA\xFE\xF0\x0D')
-    if pos != -1:
-        pos += 8 + 2                    # Skip magic & version
-
-    return pos
+if __name__ == '__main__':
+    binary_configurator.main()
