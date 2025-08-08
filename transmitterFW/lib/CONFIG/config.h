@@ -29,6 +29,7 @@
 #include <nvs.h>
 
 #define CONFIG_TX_MODEL_CNT 64U // max supported model count of EdgeTX
+#define ESPNOW_BROADCAST_U64 0xFFFFFFFFFFFF // ESP-NOW broadcast MAC FF:FF:FF:FF:FF:FF
 
 class TxConfig
 {

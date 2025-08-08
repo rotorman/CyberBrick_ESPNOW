@@ -57,6 +57,12 @@ static struct luaItem_command luaBind = {
     STR_EMPTYSPACE
 };
 
+static struct luaItem_command luaClearMAC = {
+    {"Clear MAC", CRSF_COMMAND},
+    lcsIdle, // step
+    STR_EMPTYSPACE
+};
+
 static struct luaItem_string luaInfo = {
     {"Bad/Good", (crsf_value_type_e)(CRSF_INFO | CRSF_FIELD_ELRS_HIDDEN)},
     STR_EMPTYSPACE
@@ -94,6 +100,27 @@ static void luahandSimpleSendCmd(struct luaPropertiesCommon *item, uint8_t arg)
   }
 }
 
+static void luaClearMACAddress(struct luaPropertiesCommon *item, uint8_t arg)
+{
+  const char *msg = "Sending...";
+  static uint32_t lastLcsPoll;
+  if (arg < lcsCancel)
+  {
+    lastLcsPoll = millis();
+    if ((void *)item == (void *)&luaClearMAC)
+    {
+      msg = "Clearing...";
+      ClearMAC();
+    }
+    sendLuaCommandResponse((struct luaItem_command *)item, lcsExecuting, msg);
+  } /* if doExecute */
+  else if(arg == lcsCancel || ((millis() - lastLcsPoll)> 100))
+  {
+    luadevUpdateStrings();
+    sendLuaCommandResponse((struct luaItem_command *)item, lcsIdle, STR_EMPTYSPACE);
+  }
+}
+
 /***
  * @brief: Update the display strings
  * The bad/good item is hidden on our Lua and only displayed in other systems that don't poll our status
@@ -112,6 +139,7 @@ static void registerLuaParameters()
   registerLUAParameter(&luaModelMAC);
 
   registerLUAParameter(&luaBind, &luahandSimpleSendCmd);
+  registerLUAParameter(&luaClearMAC, &luaClearMACAddress);
   
   registerLUAParameter(&luaInfo);
   if (strlen(version) < 21) {
@@ -147,17 +175,24 @@ void luaUpdateMAC()
   }
   else
   {
-    uint8_t modelMAC[6];
-    modelMAC[0] = (uint8_t)((mac & 0x0000FF0000000000)>>40);
-    modelMAC[1] = (uint8_t)((mac & 0x000000FF00000000)>>32);
-    modelMAC[2] = (uint8_t)((mac & 0x00000000FF000000)>>24);
-    modelMAC[3] = (uint8_t)((mac & 0x0000000000FF0000)>>16);
-    modelMAC[4] = (uint8_t)((mac & 0x000000000000FF00)>>8);
-    modelMAC[5] = (uint8_t)(mac & 0x00000000000000FF);
+    if (mac == ESPNOW_BROADCAST_U64)
+    {
+      sprintf(modelMACca, "Broadcast");
+    }
+    else
+    {
+      uint8_t modelMAC[6];
+      modelMAC[0] = (uint8_t)((mac & 0x0000FF0000000000)>>40);
+      modelMAC[1] = (uint8_t)((mac & 0x000000FF00000000)>>32);
+      modelMAC[2] = (uint8_t)((mac & 0x00000000FF000000)>>24);
+      modelMAC[3] = (uint8_t)((mac & 0x0000000000FF0000)>>16);
+      modelMAC[4] = (uint8_t)((mac & 0x000000000000FF00)>>8);
+      modelMAC[5] = (uint8_t)(mac & 0x00000000000000FF);
 
-    snprintf(modelMACca, sizeof(modelMACca),
-      "%02X:%02X:%02X:%02X:%02X:%02X",
-      modelMAC[0], modelMAC[1], modelMAC[2], modelMAC[3], modelMAC[4], modelMAC[5]);
+      snprintf(modelMACca, sizeof(modelMACca),
+        "%02X:%02X:%02X:%02X:%02X:%02X",
+        modelMAC[0], modelMAC[1], modelMAC[2], modelMAC[3], modelMAC[4], modelMAC[5]);
+    }
   }
   sendELRSstatus();
 }

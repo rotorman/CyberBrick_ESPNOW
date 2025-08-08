@@ -77,3 +77,4 @@ inline void setConnectionState(connectionState_e newState) {
 }
 
 extern void EnterBindingMode(); // defined in main.c
+extern void ClearMAC(); // defined in main.c

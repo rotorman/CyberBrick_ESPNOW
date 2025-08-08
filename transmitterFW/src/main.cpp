@@ -276,6 +276,25 @@ static void ConfigChangeCommit()
   devicesTriggerEvent(changes);
 }
 
+void ClearMAC()
+{
+  // Clear previous ESP-NOW entry
+  uint8_t peerMAC[6];
+  uint64_t currentModelMAC = config.GetModelMAC();
+  peerMAC[0] = (uint8_t)((currentModelMAC & 0x0000FF0000000000)>>40);
+  peerMAC[1] = (uint8_t)((currentModelMAC & 0x000000FF00000000)>>32);
+  peerMAC[2] = (uint8_t)((currentModelMAC & 0x00000000FF000000)>>24);
+  peerMAC[3] = (uint8_t)((currentModelMAC & 0x0000000000FF0000)>>16);
+  peerMAC[4] = (uint8_t)((currentModelMAC & 0x000000000000FF00)>>8);
+  peerMAC[5] = (uint8_t)((currentModelMAC & 0x00000000000000FF));
+  memcpy(peerInfo.peer_addr, peerMAC, 6);
+  esp_now_del_peer(peerInfo.peer_addr);
+
+  config.SetModelMAC(ESPNOW_BROADCAST_U64);
+  ModelUpdatePending = true;
+  setConnectionState(RECEIVERDISCONNECTED);
+}
+
 void ICACHE_RAM_ATTR OnESPNOWBindDataRecv(const uint8_t * mac_addr, const uint8_t *data, int data_len)
 {
   if (InBindingMode && !bBindModeMACreceived && (data_len == 6))

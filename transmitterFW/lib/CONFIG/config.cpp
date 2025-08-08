@@ -54,6 +54,14 @@ void TxConfig::Load()
         char model[10] = "model";
         itoa(i, model+5, 10);
         nvs_get_u64(handle, model, &m_model_mac[i]);
+        // Replace zero/unassigned value in configuration with a broadcast MAC address
+        if (m_model_mac[i] == 0)
+        {
+          m_model_mac[i] = ESPNOW_BROADCAST_U64;
+          nvs_set_u64(handle, model, m_model_mac[i]);
+          nvs_commit(handle);
+        }
+
     } // for each model
 }
 
