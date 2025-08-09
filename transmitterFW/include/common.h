@@ -63,7 +63,23 @@ enum eAuxChannels : uint8_t
     AUX10 = 13,
     AUX11 = 14,
     AUX12 = 15,
-    CRSF_NUM_CHANNELS = 16
+    EXT1 = 16,
+    EXT2 = 17,
+    EXT3 = 18,
+    EXT4 = 19,
+    EXT5 = 20,
+    EXT6 = 21,
+    EXT7 = 22,
+    EXT8 = 23,
+    EXT9 = 24,
+    EXT10 = 25,
+    EXT11 = 26,
+    EXT12 = 27,
+    EXT13 = 28,
+    EXT14 = 29,
+    EXT15 = 30,
+    EXT16 = 31,
+    CRSF_NUM_CHANNELS = 32
 };
 
 extern bool connectionHasModelMatch;

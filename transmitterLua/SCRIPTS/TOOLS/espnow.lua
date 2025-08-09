@@ -581,7 +581,7 @@ local function lcd_title_color()
   local COLOR_TOP_RIGHT = lcd.RGB(0x99, 0xAF, 0xC2)
   local COLOR_RECTANGLE = lcd.RGB(0x02, 0x2B, 0xE6)
 
-  -- Field display area (white w/ 2px green border)
+  -- Field display area (white w/ 2px blue border)
   lcd.setColor(CUSTOM_COLOR, COLOR_TITLE)
   lcd.drawRectangle(0, 0, LCD_W, LCD_H, CUSTOM_COLOR)
   lcd.drawRectangle(1, 0, LCD_W - 2, LCD_H - 1, CUSTOM_COLOR)

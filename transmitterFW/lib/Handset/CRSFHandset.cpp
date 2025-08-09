@@ -233,7 +233,7 @@ void CRSFHandset::sendSyncPacketToTX()
     }
 }
 
-void CRSFHandset::RcPacketToChannelsData() // data is packed as 11 bits per channel
+void CRSFHandset::RcPacketToChannelsData(bool bExtendedChannels) // data is packed as 11 bits per channel
 {
     auto payload = (uint8_t const * const)&inBuffer.asRCPacket_t.channels;
     constexpr unsigned srcBits = 11;
@@ -245,7 +245,7 @@ void CRSFHandset::RcPacketToChannelsData() // data is packed as 11 bits per chan
     uint8_t bitsMerged = 0;
     uint32_t readValue = 0;
     unsigned readByteIndex = 0;
-    for (volatile uint16_t & n : ChannelData)
+    for (uint8_t n=0; n<16; n++)
     {
         while (bitsMerged < srcBits)
         {
@@ -253,7 +253,7 @@ void CRSFHandset::RcPacketToChannelsData() // data is packed as 11 bits per chan
             readValue |= ((uint32_t) readByte) << bitsMerged;
             bitsMerged += 8;
         }
-        n = (uint16_t)((readValue & inputChannelMask) << precisionShift);
+        ChannelData[(bExtendedChannels) ? n+16 : n] = (uint16_t)((readValue & inputChannelMask) << precisionShift);
         readValue >>= srcBits;
         bitsMerged -= srcBits;
     }
@@ -321,7 +321,13 @@ bool CRSFHandset::ProcessPacket()
     if (packetType == CRSF_FRAMETYPE_RC_CHANNELS_PACKED)
     {
         RCdataLastRecvUS = micros();
-        RcPacketToChannelsData();
+        RcPacketToChannelsData(false);
+        packetReceived = true;
+    }
+    else if (packetType == CRSF_FRAMETYPE_RC_EXTENDED_CHANNELS_PACKED)
+    {
+        RCdataLastRecvUS = micros();
+        RcPacketToChannelsData(true);
         packetReceived = true;
     }
     // check for all extended frames that are a broadcast or a message to the FC
