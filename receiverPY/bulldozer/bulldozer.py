@@ -24,8 +24,9 @@ Control for the Bulldozer model by MottN
 https://makerworld.com/de/models/1461532-bulldozer-cyberbrick-rc
 
 The handset, running EdgeTX firmware, sends, via custom ESP-NOW flashed
-ExpressLRS transmitter module channel data according to CRSF specifications:
-16 proportional channels in slightly lower than 11-bit resolution.
+ExpressLRS transmitter module channel data according to CRSF specifications
+PR#28 (https://github.com/tbs-fpv/tbs-crsf-spec/pull/28) 32 proportional
+channels in slightly lower than 11-bit resolution.
 The channel order, range, mixing and further parameters can be adjusted
 in the EdgeTX radio.
 
@@ -209,9 +210,9 @@ while True:
       enow_reset()
 
     else:
-      if len(msg) > 31:
-        ch = struct.unpack('<HHHHHHHHHHHHHHHH', msg)
-        if len(ch) == 16:
+      if len(msg) > 63:
+        ch = struct.unpack('<HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH', msg)
+        if len(ch) == 32:
           # Received expected CRSF telegram channel count from the handset
           # Blink green
           if ((utime.ticks_ms() % blinkertime_ms) > (blinkertime_ms / 2)):
