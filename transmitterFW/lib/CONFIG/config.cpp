@@ -107,7 +107,7 @@ void TxConfig::SetModelMAC(uint64_t mac)
  **/
 bool TxConfig::SetModelId(uint8_t modelId)
 {
-    if (m_modelId != modelId)
+    if ((m_modelId != modelId) && (modelId < CONFIG_TX_MODEL_CNT))
     {
         m_modelId = modelId;
         return true;

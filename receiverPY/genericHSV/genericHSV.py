@@ -15,13 +15,39 @@ This program is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
+
+HSV code stems from BambuLab forum user Bambou
+https://forum.bambulab.com/t/where-is-documentation-on-building-applications-for-cyberbrick/172330/66
 """
 
 """
 CyberBrick ESP-NOW receiver script in CyberBrick MicroPython flavor.
-To be copied to CyberBrick Core, paired with X11 remote control receiver shield.
-Control for the Bulldozer model by MottN
-https://makerworld.com/de/models/1461532-bulldozer-cyberbrick-rc
+To be copied to CyberBrick Core on the model side.
+
+Generic receiver script with the following mapping on X11 receiver shield:
+
+ ch1 - brushed motor1
+ ch2 - brushed motor2
+ ch3 - servo1 (0.5ms to 2.5ms range)
+ ch4 - servo2 (0.5ms to 2.5ms range)
+
+ch17 - Neopixel string1 LED1 hue
+ch18 - Neopixel string1 LED1 brightness
+ch19 - Neopixel string1 LED2 hue
+ch20 - Neopixel string1 LED2 brightness
+ch21 - Neopixel string1 LED3 hue
+ch22 - Neopixel string1 LED3 brightness
+ch23 - Neopixel string1 LED4 hue
+ch24 - Neopixel string1 LED4 brightness
+
+ch25 - Neopixel string2 LED1 hue
+ch26 - Neopixel string2 LED1 brightness
+ch27 - Neopixel string2 LED2 hue
+ch28 - Neopixel string2 LED2 brightness
+ch29 - Neopixel string2 LED3 hue
+ch30 - Neopixel string2 LED3 brightness
+ch31 - Neopixel string2 LED4 hue
+ch32 - Neopixel string2 LED4 brightness
 
 The handset, running EdgeTX firmware, sends, via custom ESP-NOW flashed
 ExpressLRS transmitter module channel data according to CRSF specifications
@@ -30,18 +56,14 @@ channels in slightly lower than 11-bit resolution.
 The channel order, range, mixing and further parameters can be adjusted
 in the EdgeTX radio.
 
-The outputs of X11 shield are driven from following inputs, matching
-the most widely used Mode 2, AETR mapping:
-* Servo1: blade up/down (channel 6)
-* Motor1: right track (mix of channel 3 (left vertical stick) and channel 1 (right horizontal stick))
-* Motor2: left track  (mix of channel 3 (left vertical stick) and channel 1 (right horizontal stick))
-* NeoPixel_Channel1: cabin lights, driven in code by channel 7 (3-way switch),
-                     brightness controlled by channel 8
-* NeoPixel_Channel2: front lights, driven in code by channel 9 (2-way switch)
+The incoming value range of the channel data with 100% range in EdgeTX
+is from 173 to 1811, with 992 being middle.
+If the output range is increased to -121.1% to +121.1% under OUTPUTS in
+EdgeTX, the value range increases form 0 to 1984, with 992 still being
+the middle position.
 
-In Bulldozer, the 6 NeoPixels are all connected as follows:
-channel1, 1 - cabin back right, 2 - cabin front right, 3 - cabin front left, 4 - cabin back left
-channel2, 1 - front left, 2 - front right
+The LEDs data is interpreted as 0% (173) to 100% (1811).
+Any value below 173 is interpreted as 0% and any value above 1811 as 100%.
 """
 
 from machine import Pin, PWM
@@ -55,7 +77,7 @@ button = Pin(9, Pin.IN) # User key/button on CyberBrick Core
 
 # Initialize all servo outputs with 1.5ms pulse length in 20ms period
 S1 = PWM(Pin(3), freq=50, duty_u16=4915) # servo center 1.5ms equals to 65535/20 * 1.5 = 4915
-#S2 = PWM(Pin(2), freq=50, duty_u16=4915)
+S2 = PWM(Pin(2), freq=50, duty_u16=4915)
 #S3 = PWM(Pin(1), freq=50, duty_u16=4915)
 #S4 = PWM(Pin(0), freq=50, duty_u16=4915)
 
@@ -130,46 +152,77 @@ for i in range(4):
   LEDstring1[i] = (0, 0, 0) # default all off
 LEDstring1.write()
 
-#Initialize NeoPixel LED string 2 with 2 pixels
+#Initialize NeoPixel LED string 2 with 4 pixels
 LEDstring2pin = Pin(20, Pin.OUT)
-LEDstring2 = NeoPixel(LEDstring2pin, 2)
-for i in range(2):
+LEDstring2 = NeoPixel(LEDstring2pin, 4)
+for i in range(4):
   LEDstring2[i] = (0, 0, 0) # default all off
 LEDstring2.write()
 
-blinkertime_ms            = const(750)  # 1.5 Hz
+blinkertime_ms            = 750  # 1.5 Hz
 CRSFdeadzoneplusminus     = const(50)
-SERVORAWdeadzoneplusminus = const(100)
-MINLEDCTRLBRIGHTNESS      = const(10)
-MAXLEDCTRLBRIHTNESS       = const(255)
+
 CRSF_CHANNEL_VALUE_MIN    = const(173)
 CRSF_CHANNEL_VALUE_MID    = const(992)
 CRSF_CHANNEL_VALUE_MAX    = const(1811)
 SERVOPULSE_0_5MS_TICKS    = const(1639) # 65535 equals to 20ms
-SERVOPULSE_1MS_TICKS      = const(3277)
 SERVOPULSE_1_5MS_TICKS    = const(4915)
 SERVORAWmidpoint          = SERVOPULSE_1_5MS_TICKS
-SERVOPULSE_2MS_TICKS      = const(6554)
 SERVOPULSE_2_5MS_TICKS    = const(8192)
 FULLSCALE16BIT            = 65535
 PWMGAINCOEFFICIENTPOS     = const(80) # FULLSCALE16BIT/(CRSF_CHANNEL_VALUE_MAX - CRSF_CHANNEL_VALUE_MID)
 PWMGAINCOEFFICIENTNEG     = const(80) # FULLSCALE16BIT/(CRSF_CHANNEL_VALUE_MID - CRSF_CHANNEL_VALUE_MIN)
+
+def BrushedMotorControl(channel):
+  #deadzone check
+  if ((channel < (CRSF_CHANNEL_VALUE_MID+CRSFdeadzoneplusminus)) and (channel > (CRSF_CHANNEL_VALUE_MID-CRSFdeadzoneplusminus))):
+    #deadzone - no forward/backward movement
+    return 0,0
+  else:
+    if channel < CRSF_CHANNEL_VALUE_MID:
+      # First direction
+      return (int)(max(min(PWMGAINCOEFFICIENTNEG*(CRSF_CHANNEL_VALUE_MID-channel), FULLSCALE16BIT), 0)), 0
+    else:
+      # Rotate in the other direction
+      return 0, (int)(max(min(PWMGAINCOEFFICIENTPOS*(channel-CRSF_CHANNEL_VALUE_MID), FULLSCALE16BIT), 0))
+      
+def limitChannel(chvalue):
+  if chvalue < CRSF_CHANNEL_VALUE_MIN:
+    chvalue = CRSF_CHANNEL_VALUE_MIN
+  if chvalue > CRSF_CHANNEL_VALUE_MAX:
+    chvalue = CRSF_CHANNEL_VALUE_MAX
+  return chvalue
 
 def mapchannel(chvalue, minmapvalue, maxmapvalue):
   if minmapvalue > SERVORAWmidpoint:
     minmapvalue = SERVORAWmidpoint
   if maxmapvalue < SERVORAWmidpoint:
     maxmapvalue = SERVORAWmidpoint
-  if chvalue < CRSF_CHANNEL_VALUE_MIN:
-    chvalue = CRSF_CHANNEL_VALUE_MIN
-  if chvalue > CRSF_CHANNEL_VALUE_MAX:
-    chvalue = CRSF_CHANNEL_VALUE_MAX
+  chvalue = limitChannel(chvalue)
   if chvalue == CRSF_CHANNEL_VALUE_MID:
     return SERVORAWmidpoint
   if chvalue>CRSF_CHANNEL_VALUE_MID:
     return ((chvalue-CRSF_CHANNEL_VALUE_MID)*(maxmapvalue-SERVORAWmidpoint)/(CRSF_CHANNEL_VALUE_MAX-CRSF_CHANNEL_VALUE_MID)) + SERVORAWmidpoint
   else:
     return SERVORAWmidpoint - ((CRSF_CHANNEL_VALUE_MID-chvalue)*(SERVORAWmidpoint-minmapvalue)/(CRSF_CHANNEL_VALUE_MID-CRSF_CHANNEL_VALUE_MIN))
+    
+def hsv_to_rgb(h, s, v):
+    h /= 60.0
+    c = v * s
+    x = c * (1 - abs((h % 2) - 1))
+    m = v - c
+    if h < 1:   r,g,b = c, x, 0
+    elif h < 2: r,g,b = x, c, 0
+    elif h < 3: r,g,b = 0, c, x
+    elif h < 4: r,g,b = 0, x, c
+    elif h < 5: r,g,b = x, 0, c
+    else:       r,g,b = c, 0, x
+    return int((r+m)*255), int((g+m)*255), int((b+m)*255)
+
+def channel2hsv(hue_channel, value_channel):
+  hue = ((limitChannel(hue_channel) -  CRSF_CHANNEL_VALUE_MIN) * 360) // (CRSF_CHANNEL_VALUE_MAX - CRSF_CHANNEL_VALUE_MIN)
+  val = (limitChannel(value_channel) - CRSF_CHANNEL_VALUE_MIN) / (CRSF_CHANNEL_VALUE_MAX - CRSF_CHANNEL_VALUE_MIN)
+  return hsv_to_rgb(hue % 360, 1.0, val)
 
 while True:
   if button.value() == 0:
@@ -189,22 +242,21 @@ while True:
       M2B.duty_u16(0)
       # Fork to idle
       S1.duty_u16(SERVORAWmidpoint)      
-      # blinking red LEDs
+      S2.duty_u16(SERVORAWmidpoint)      
+      # No signal from remote, blink red
       if ((utime.ticks_ms() % blinkertime_ms) > (blinkertime_ms / 2)):
-        LEDstring1[0] = (0, 0, 0) # Cabin back right dark
-        LEDstring1[1] = (0, 0, 0) # Cabin front right dark
-        LEDstring1[2] = (0, 0, 0) # Cabin front left dark
-        LEDstring1[3] = (0, 0, 0) # Cabin back left dark
-        LEDstring2[0] = (0, 0, 0) # Front left dark
-        LEDstring2[1] = (0, 0, 0) # Front right dark
+        np[0] = (0, 0, 0) # Dark phase
+        for i in range(4):
+          LEDstring1[i] = (0, 0, 0) # All dark
+          LEDstring2[i] = (0, 0, 0) # All dark
       else:
+        np[0] = (10, 0, 0) # Dim red phase
         for i in range(4):
           LEDstring1[i] = (255, 0, 0) # All red
-        for i in range(2):
           LEDstring2[i] = (255, 0, 0) # All red
       LEDstring1.write()
       LEDstring2.write()
-
+      np.write()
       e.active(False)
       wifi_reset()
       enow_reset()
@@ -214,86 +266,42 @@ while True:
         ch = struct.unpack('<HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH', msg)
         if len(ch) == 32:
           # Received expected CRSF telegram channel count from the handset
-          # Blink green
+
+          # 0.5 to 2.5ms range
+          S1.duty_u16(int(mapchannel(ch[2], SERVOPULSE_0_5MS_TICKS, SERVOPULSE_2_5MS_TICKS)))
+          S2.duty_u16(int(mapchannel(ch[3], SERVOPULSE_0_5MS_TICKS, SERVOPULSE_2_5MS_TICKS)))
+
+          d1,d2 = BrushedMotorControl(ch[0]) # Motor1
+          M1A.duty_u16(d1)
+          M1B.duty_u16(d2)
+
+          d1,d2 = BrushedMotorControl(ch[1]) # Motor2
+          M2A.duty_u16(d1)
+          M2B.duty_u16(d2)
+
+          # NeoPixel LEDs
+          LEDstring1[0] = channel2hsv(ch[16], ch[17])
+          LEDstring1[1] = channel2hsv(ch[18], ch[19])
+          LEDstring1[2] = channel2hsv(ch[20], ch[21])
+          LEDstring1[3] = channel2hsv(ch[22], ch[23])
+          LEDstring1.write()
+
+          LEDstring2[0] = channel2hsv(ch[24], ch[25])
+          LEDstring2[1] = channel2hsv(ch[26], ch[27])
+          LEDstring2[2] = channel2hsv(ch[28], ch[29])
+          LEDstring2[3] = channel2hsv(ch[30], ch[31])
+          LEDstring2.write()
+
+          # Blink Core LED green
           if ((utime.ticks_ms() % blinkertime_ms) > (blinkertime_ms / 2)):
             np[0] = (0, 0, 0) # Dark phase
           else:
             np[0] = (0, 10, 0) # Dim green phase
           np.write()
-          
-          cabinlightmode = ch[6] # 3-way switch
-          brightness = (int)(((ch[7]-CRSF_CHANNEL_VALUE_MIN)*(MAXLEDCTRLBRIHTNESS-MINLEDCTRLBRIGHTNESS)/(CRSF_CHANNEL_VALUE_MAX-CRSF_CHANNEL_VALUE_MIN)) + MINLEDCTRLBRIGHTNESS)
-          if brightness < 0:
-            brightness = 0
-          if brightness > 255:
-            brightness = 255
-          
-          # Cabin lights
-          if cabinlightmode > (CRSF_CHANNEL_VALUE_MID + (CRSF_CHANNEL_VALUE_MAX - CRSF_CHANNEL_VALUE_MID)/2):
-            #Yellow blinking lights
-            if ((utime.ticks_ms() % blinkertime_ms) > (blinkertime_ms / 2)):
-              for i in range(4):
-                LEDstring1[i] = (0, 0, 0) # All dark
-            else:
-              for i in range(4):
-                LEDstring1[i] = (brightness, brightness, 0) # All yellow
-          elif cabinlightmode < (CRSF_CHANNEL_VALUE_MID - (CRSF_CHANNEL_VALUE_MID - CRSF_CHANNEL_VALUE_MIN)/2):
-            for i in range(4):
-              LEDstring1[i] = (brightness, brightness, brightness) # All white
-          else:
-            for i in range(4):
-              LEDstring1[i] = (0, 0, 0) # All dark
-          LEDstring1.write()
-          
-          # Front lights
-          if ch[8] > (CRSF_CHANNEL_VALUE_MID + (CRSF_CHANNEL_VALUE_MAX - CRSF_CHANNEL_VALUE_MID)/2):
-            for i in range(2):
-              LEDstring2[i] = (brightness, brightness, brightness) # Front lights on
-          else:
-            for i in range(2):
-              LEDstring2[i] = (0, 0, 0) # Front lights off
-          LEDstring2.write()
-          
-          # 0.5 to 2.5ms range
-          blade = mapchannel(ch[5], SERVOPULSE_0_5MS_TICKS, SERVOPULSE_2_5MS_TICKS)
-          S1.duty_u16(int(blade))
-
-          steering = ch[0]
-          throttle = ch[2]
-          
-          lefttrack = int(((steering-CRSF_CHANNEL_VALUE_MID) - (CRSF_CHANNEL_VALUE_MID-throttle))/2 + CRSF_CHANNEL_VALUE_MID)
-          righttrack = int(((steering-CRSF_CHANNEL_VALUE_MID) + (CRSF_CHANNEL_VALUE_MID-throttle))/2 + CRSF_CHANNEL_VALUE_MID)
-          
-          if ((righttrack < (CRSF_CHANNEL_VALUE_MID+CRSFdeadzoneplusminus)) and (righttrack > (CRSF_CHANNEL_VALUE_MID-CRSFdeadzoneplusminus))):
-            #deadzone - no forward/backward movement
-            M1A.duty_u16(0)
-            M1B.duty_u16(0)
-          else:
-            if righttrack > CRSF_CHANNEL_VALUE_MID:
-              # backwards
-              M1A.duty_u16((int)(max(min(PWMGAINCOEFFICIENTNEG*(righttrack-CRSF_CHANNEL_VALUE_MID), FULLSCALE16BIT),0)))
-              M1B.duty_u16(0)
-            else:
-              # forwards
-              M1A.duty_u16(0)
-              M1B.duty_u16((int)(max(min(PWMGAINCOEFFICIENTNEG*(CRSF_CHANNEL_VALUE_MID-righttrack), FULLSCALE16BIT),0)))
-                  
-          if ((lefttrack < (CRSF_CHANNEL_VALUE_MID+CRSFdeadzoneplusminus)) and (lefttrack > (CRSF_CHANNEL_VALUE_MID-CRSFdeadzoneplusminus))):
-            #deadzone - no forward/backward movement
-            M2A.duty_u16(0)
-            M2B.duty_u16(0)
-          else:
-            if lefttrack > CRSF_CHANNEL_VALUE_MID:
-              # backwards
-              M2A.duty_u16((int)(max(min(PWMGAINCOEFFICIENTNEG*(lefttrack-CRSF_CHANNEL_VALUE_MID), FULLSCALE16BIT),0)))
-              M2B.duty_u16(0)
-            else:
-              # forwards
-              M2A.duty_u16(0)
-              M2B.duty_u16((int)(max(min(PWMGAINCOEFFICIENTNEG*(CRSF_CHANNEL_VALUE_MID-lefttrack), FULLSCALE16BIT),0)))
-
       else:
-        # Unexpected message length - blink yellow
+        # Unexpected message length
+        print(f"Unexpected ESP-NOW message length: {len(msg)}")
+        # Blink yellow
         if ((utime.ticks_ms() % blinkertime_ms) > (blinkertime_ms / 2)):
           np[0] = (0, 0, 0) # Dark phase
         else:
@@ -302,7 +310,7 @@ while True:
          
   except OSError as err:
     print("Error:", err)
-    utime.sleep_ms(500)
+    time.sleep(0.5)
     e.active(False)
     wifi_reset()
     enow_reset()

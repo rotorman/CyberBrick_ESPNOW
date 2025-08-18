@@ -23,8 +23,9 @@ To be copied to CyberBrick Core on the model side.
 Debug script, that prints incoming data onto MicroPython REPL.
 
 The handset, running EdgeTX firmware, sends, via custom ESP-NOW flashed
-ExpressLRS transmitter module channel data according to CRSF specifications:
-16 proportional channels in slightly lower than 11-bit resolution.
+ExpressLRS transmitter module channel data according to CRSF specifications
+PR#28 (https://github.com/tbs-fpv/tbs-crsf-spec/pull/28) 32 proportional
+channels in slightly lower than 11-bit resolution.
 The channel order, range, mixing and further parameters can be adjusted
 in the EdgeTX radio.
 
@@ -135,11 +136,11 @@ while True:
       enow_reset()
 
     else:
-      if len(msg) > 31:
-        ch = struct.unpack('<HHHHHHHHHHHHHHHH', msg)
-        if len(ch) == 16:
+      if len(msg) > 63:
+        ch = struct.unpack('<HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH', msg)
+        if len(ch) == 32:
           # Received expected CRSF telegram channel count from the handset
-          print('%-5i%-5i%-5i%-5i| %-5i%-5i%-5i%-5i|%-5i%-5i%-5i%-5i| %-5i%-5i%-5i%-5i' % (ch[0:16]))
+          print('%-5i%-5i%-5i%-5i| %-5i%-5i%-5i%-5i|%-5i%-5i%-5i%-5i| %-5i%-5i%-5i%-5i| %-5i%-5i%-5i%-5i| %-5i%-5i%-5i%-5i|%-5i%-5i%-5i%-5i| %-5i%-5i%-5i%-5i' % (ch[0:32]))
           # Blink Core LED green
           if ((utime.ticks_ms() % blinkertime_ms) > (blinkertime_ms / 2)):
             np[0] = (0, 0, 0) # Dark phase
