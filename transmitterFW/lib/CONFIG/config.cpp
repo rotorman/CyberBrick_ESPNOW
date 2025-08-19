@@ -46,9 +46,6 @@ void TxConfig::Load()
     ESP_ERROR_CHECK( err );
     ESP_ERROR_CHECK(nvs_open("ELRS-ESPNOW", NVS_READWRITE, &handle));
 
-    SetModelId(0);
-    m_modified = 0;
-
     for(unsigned i=0; i<CONFIG_TX_MODEL_CNT; i++)
     {
         char model[10] = "model";
