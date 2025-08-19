@@ -38,6 +38,10 @@
 #include <esp_wifi.h>
 #include <WiFi.h>
 
+// All models must be programmed to use the same WiFi channel:
+#define WIFI_CHANNEL 11  // Change to a channel your model's CyberBrick Core MicroPython code is configured to!
+                        // Valid range is from 1 to 11
+
 #define RF_RC_INTERVAL_US 20000U // 50 Hz
 #define CONNECTIONLOSTTIMEOUT_MS 200
 #define TLM_REPORT_INTERVAL_MS 240U
@@ -163,11 +167,10 @@ bool initESPNOW()
 {
   WiFi.disconnect(true);
   WiFi.mode(WIFI_OFF);
-  WiFi.mode(WIFI_STA);
+  WiFi.mode(WIFI_AP);
   WiFi.setTxPower(WIFI_POWER_19_5dBm);
-  esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_LR);
-  WiFi.begin("network-name", "pass-to-network", 1);
-  WiFi.disconnect();
+  esp_wifi_set_protocol(WIFI_IF_AP, WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_LR);
+  WiFi.begin("CyberBrick-TX", "cyberbricktx", WIFI_CHANNEL);
 
   // Init ESP-NOW
   if (esp_now_init() != ESP_OK)
@@ -177,7 +180,7 @@ bool initESPNOW()
 
   // Register model MAC as peer
   memset(&peerInfo, 0, sizeof(esp_now_peer_info_t));
-  peerInfo.channel = 0;
+  peerInfo.channel = WIFI_CHANNEL;
   peerInfo.encrypt = false;
   bool bResult = true;
 

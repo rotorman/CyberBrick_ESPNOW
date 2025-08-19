@@ -46,6 +46,10 @@ from neopixel import NeoPixel
 import utime
 import struct
 
+# If you wish to change the WiFi channel, change this value (valid range is between 1 and 11):
+wifi_channel = 1
+# Remember to change it ALSO in the transmitter firmware!
+
 button = Pin(9, Pin.IN) # User key/button on CyberBrick Core
 
 # Initialize all servo outputs with 1.5ms pulse length in 20ms period
@@ -76,7 +80,7 @@ def wifi_reset():
     utime.sleep_ms(100)
   sta = network.WLAN(network.STA_IF)
   sta.active(True)
-  sta.config(txpower=20,pm=sta.PM_NONE,reconnects=0)
+  sta.config(channel=wifi_channel,txpower=20,pm=sta.PM_NONE,reconnects=0)
   sta.disconnect()
 
 wifi_reset()
