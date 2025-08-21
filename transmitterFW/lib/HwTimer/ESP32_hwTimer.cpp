@@ -21,6 +21,8 @@
 
 #include "hwTimer.h"
 
+#define HWTIMER_FREQUENCY 1000000 // 1 MHz
+
 void (*hwTimer::callbackFunc)() = nullptr;
 
 volatile bool hwTimer::running = false;
@@ -35,8 +37,9 @@ void ICACHE_RAM_ATTR hwTimer::init(void (*callbackf)())
     if (!timer)
     {
         hwTimer::callbackFunc = callbackf;
-        timer = timerBegin(0, (APB_CLK_FREQ / 1000000), true);
-        timerAttachInterrupt(timer, hwTimer::callback, true);
+        timer = timerBegin(HWTIMER_FREQUENCY);
+        timerStop(timer);
+        timerAttachInterrupt(timer, hwTimer::callback);
     }
 }
 
@@ -45,7 +48,7 @@ void ICACHE_RAM_ATTR hwTimer::stop()
     if (timer && running)
     {
         running = false;
-        timerAlarmDisable(timer);
+        timerStop(timer);
     }
 }
 
@@ -55,9 +58,8 @@ void ICACHE_RAM_ATTR hwTimer::resume()
     {
         // The timer must be restarted so that the new timerAlarmWrite() period is set.
         timerRestart(timer);
-        timerAlarmWrite(timer, HWtimerIntervalUS, true);
         running = true;
-        timerAlarmEnable(timer);
+        timerAlarm(timer, HWtimerIntervalUS, true, 0);
     }
 }
 
@@ -67,7 +69,7 @@ void ICACHE_RAM_ATTR hwTimer::updateIntervalUS(uint32_t timeUS)
     HWtimerIntervalUS = timeUS;
     if (timer)
     {
-        timerAlarmWrite(timer, HWtimerIntervalUS, true);
+        timerAlarm(timer, HWtimerIntervalUS, true, 0);
     }
 }
 

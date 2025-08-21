@@ -35,7 +35,6 @@
 #include "lua.h"
 #include "devHandset.h"
 #include <esp_now.h>
-#include <esp_wifi.h>
 #include <WiFi.h>
 
 #define RF_RC_INTERVAL_US 20000U // 50 Hz
@@ -78,11 +77,11 @@ void ESPNOW_OnDataSentCB(const uint8_t *mac_addr, esp_now_send_status_t status);
 void EnterBindingMode();
 static void CheckConfigChangePending();
 static void ConfigChangeCommit();
-void ICACHE_RAM_ATTR OnESPNOWBindDataRecv(const uint8_t * mac_addr, const uint8_t *data, int data_len);
+void OnESPNOWBindDataRecv(const esp_now_recv_info*, const uint8_t *data, int data_len);
 void ModelUpdateReq();
 static void UARTconnected();
 static void UARTdisconnected();
-void ICACHE_RAM_ATTR timerCallback();
+void timerCallback();
 
 void setup()
 {
@@ -165,7 +164,6 @@ bool initESPNOW()
   WiFi.mode(WIFI_OFF);
   WiFi.mode(WIFI_STA);
   WiFi.setTxPower(WIFI_POWER_19_5dBm);
-  esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_LR);
   WiFi.begin("network-name", "pass-to-network", 1);
   WiFi.disconnect();
 
@@ -295,7 +293,7 @@ void ClearMAC()
   setConnectionState(RECEIVERDISCONNECTED);
 }
 
-void ICACHE_RAM_ATTR OnESPNOWBindDataRecv(const uint8_t * mac_addr, const uint8_t *data, int data_len)
+void OnESPNOWBindDataRecv(const esp_now_recv_info*, const uint8_t *data, int data_len)
 {
   if (InBindingMode && !bBindModeMACreceived && (data_len == 6))
   {
@@ -361,7 +359,7 @@ static void UARTdisconnected()
 }
 
 // Called as the timer ISR when there is a CRSF connection from the handset
-void ICACHE_RAM_ATTR timerCallback()
+void timerCallback()
 {
   /* If we are busy writing to EEPROM (committing config changes) then we generate no further traffic */
   if (commitInProgress)

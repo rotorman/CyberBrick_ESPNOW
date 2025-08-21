@@ -28,6 +28,8 @@
 #include <hal/uart_ll.h>
 #include <soc/soc.h>
 #include <soc/uart_reg.h>
+#include <rom/gpio.h>
+
 // UART0 is used since for full duplex connection we can connect directly through IO_MUX and not the Matrix
 // for better performance, and on other targets (mostly using pin 13), it always uses Matrix
 HardwareSerial CRSFHandset::Port(0);
