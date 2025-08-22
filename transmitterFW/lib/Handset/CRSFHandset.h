@@ -137,7 +137,7 @@ private:
     void adjustMaxPacketSize();
     void duplex_set_RX() const;
     void duplex_set_TX() const;
-    void RcPacketToChannelsData();
+    void RcPacketToChannelsData(bool bExtendedChannels);
     bool processInternalCrsfPackage(uint8_t *package);
     void alignBufferToSync(uint8_t startIdx);
     bool ProcessPacket();

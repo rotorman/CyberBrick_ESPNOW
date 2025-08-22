@@ -26,7 +26,7 @@
 #define ICACHE_RAM_ATTR IRAM_ATTR
 
 #define GPIO_PIN_BOOT0 0
-#define CRSF_NUM_CHANNELS 16U
+#define CRSF_NUM_CHANNELS 32U
 #define RF_FRAME_RATE_US 20000U // 50 Hz
 
 typedef enum
