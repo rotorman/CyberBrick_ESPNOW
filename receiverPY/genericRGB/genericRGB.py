@@ -27,18 +27,43 @@ Generic receiver script with the following mapping on X11 receiver shield:
  ch2 - brushed motor2
  ch3 - servo1 (0.5ms to 2.5ms range)
  ch4 - servo2 (0.5ms to 2.5ms range)
- ch7 - Neopixel string1 LED1
- ch8 - Neopixel string1 LED2
- ch9 - Neopixel string1 LED3
-ch10 - Neopixel string1 LED4
-ch11 - Neopixel string2 LED1
-ch12 - Neopixel string2 LED2
-ch13 - Neopixel string2 LED3
-ch14 - Neopixel string2 LED4
+
+ ch9 - Neopixel string1 LED1 Red
+ch10 - Neopixel string1 LED1 Green
+ch11 - Neopixel string1 LED1 Blue
+
+ch12 - Neopixel string1 LED2 Red
+ch13 - Neopixel string1 LED2 Green
+ch14 - Neopixel string1 LED2 Blue
+
+ch15 - Neopixel string1 LED3 Red
+ch16 - Neopixel string1 LED3 Green
+ch17 - Neopixel string1 LED3 Blue
+
+ch18 - Neopixel string1 LED4 Red
+ch19 - Neopixel string1 LED4 Green
+ch20 - Neopixel string1 LED4 Blue
+
+ch21 - Neopixel string2 LED1 Red
+ch22 - Neopixel string2 LED1 Green
+ch23 - Neopixel string2 LED1 Blue
+
+ch24 - Neopixel string2 LED2 Red
+ch25 - Neopixel string2 LED2 Green
+ch26 - Neopixel string2 LED2 Blue
+
+ch27 - Neopixel string2 LED3 Red
+ch28 - Neopixel string2 LED3 Green
+ch29 - Neopixel string2 LED3 Blue
+
+ch30 - Neopixel string2 LED4 Red
+ch31 - Neopixel string2 LED4 Green
+ch32 - Neopixel string2 LED4 Blue
 
 The handset, running EdgeTX firmware, sends, via custom ESP-NOW flashed
-ExpressLRS transmitter module channel data according to CRSF specifications:
-16 proportional channels in slightly lower than 11-bit resolution.
+ExpressLRS transmitter module channel data according to CRSF specifications
+PR#28 (https://github.com/tbs-fpv/tbs-crsf-spec/pull/28) 32 proportional
+channels in slightly lower than 11-bit resolution.
 The channel order, range, mixing and further parameters can be adjusted
 in the EdgeTX radio.
 
@@ -48,26 +73,8 @@ If the output range is increased to -121.1% to +121.1% under OUTPUTS in
 EdgeTX, the value range increases form 0 to 1984, with 992 still being
 the middle position.
 
-The LEDs data is interpreted as RGB343 (3 bits for red, 4 for green and
-3 for blue) with an offset of 173 (value 173 -> R=0, G=0, B=0).
-The input is converted into RGB888 output. The undefined bits are intepreted
-as 1, except if the value is 0, then as 0.
-Examples:
-
-value | binary (-173) | red  | green | blue
-173   | b000 0000 000 | 0    | 0     | 0 (<- dark/black)
-174   | b000 0000 001 | 0    | 0     | b0011 1111 = 63
-175   | b000 0000 010 | 0    | 0     | b0101 1111 = 95
-180   | b000 0000 111 | 0    | 0     | b1111 1111 = 255
-181   | b000 0001 000 | 0    | 31    | 0
-182   | b000 0001 001 | 0    | 31    | 63
-300   | b000 1111 111 | 0    | 255   | 255 (<- cyan)
-301   | b001 0000 000 | 63   | 0     | 0
-302   | b001 0000 001 | 63   | 0     | 63
-773   | b100 1011 000 | 159  | 191   | 0
-1196  | b111 1111 111 | 255  | 255   | 255 (<- white)
-
-Any value above 173+1023=1196 is intepreted as white.
+The LEDs data is interpreted as 0% (173) to 100% (1811).
+Any value below 173 is interpreted as 0% and any value above 1811 as 100%.
 """
 
 from machine import Pin, PWM
@@ -77,11 +84,11 @@ from neopixel import NeoPixel
 import utime
 import struct
 
-button = Pin(9, Pin.IN) # User key/button on CyberBrick Core
-
 # If you wish to change the WiFi channel, change this value (valid range is between 1 and 11):
 wifi_channel = 1
 # Remember to change it ALSO in the transmitter firmware!
+
+button = Pin(9, Pin.IN) # User key/button on CyberBrick Core
 
 # Initialize all servo outputs with 1.5ms pulse length in 20ms period
 S1 = PWM(Pin(3), freq=50, duty_u16=4915) # servo center 1.5ms equals to 65535/20 * 1.5 = 4915
@@ -180,7 +187,6 @@ SERVOPULSE_2_5MS_TICKS    = const(8192)
 FULLSCALE16BIT            = 65535
 PWMGAINCOEFFICIENTPOS     = const(80) # FULLSCALE16BIT/(CRSF_CHANNEL_VALUE_MAX - CRSF_CHANNEL_VALUE_MID)
 PWMGAINCOEFFICIENTNEG     = const(80) # FULLSCALE16BIT/(CRSF_CHANNEL_VALUE_MID - CRSF_CHANNEL_VALUE_MIN)
-MAXRGBVALUE               = const(1023) # max of 11-bit value range
 
 def BrushedMotorControl(channel):
   #deadzone check
@@ -195,16 +201,6 @@ def BrushedMotorControl(channel):
       # Rotate in the other direction
       return 0, (int)(max(min(PWMGAINCOEFFICIENTPOS*(channel-CRSF_CHANNEL_VALUE_MID), FULLSCALE16BIT)), 0)
       
-def rgb343(val):
-  adjusted = min(val - CRSF_CHANNEL_VALUE_MIN, MAXRGBVALUE)
-  if adjusted == 0:
-    return 0,0,0
-  else:
-    r = min(((adjusted & 0b1110000000) >> 2) + 0b11111, 255)
-    g = min(((adjusted & 0b0001111000) << 1) + 0b1111, 255)
-    b = min(((adjusted & 0b0000000111) << 5) + 0b11111, 255)
-    return r,g,b
-
 def mapchannel(chvalue, minmapvalue, maxmapvalue):
   if minmapvalue > SERVORAWmidpoint:
     minmapvalue = SERVORAWmidpoint
@@ -220,6 +216,18 @@ def mapchannel(chvalue, minmapvalue, maxmapvalue):
     return ((chvalue-CRSF_CHANNEL_VALUE_MID)*(maxmapvalue-SERVORAWmidpoint)/(CRSF_CHANNEL_VALUE_MAX-CRSF_CHANNEL_VALUE_MID)) + SERVORAWmidpoint
   else:
     return SERVORAWmidpoint - ((CRSF_CHANNEL_VALUE_MID-chvalue)*(SERVORAWmidpoint-minmapvalue)/(CRSF_CHANNEL_VALUE_MID-CRSF_CHANNEL_VALUE_MIN))
+
+def mapLED(chvalue):
+  if chvalue < CRSF_CHANNEL_VALUE_MIN:
+    chvalue = CRSF_CHANNEL_VALUE_MIN
+  if chvalue > CRSF_CHANNEL_VALUE_MAX:
+    chvalue = CRSF_CHANNEL_VALUE_MAX
+  mapped = round((chvalue - CRSF_CHANNEL_VALUE_MIN) * 255 / (CRSF_CHANNEL_VALUE_MAX - CRSF_CHANNEL_VALUE_MIN))
+  if mapped < 0:
+    return 0
+  if mapped > 255:
+    return 255
+  return (int)(mapped)
 
 while True:
   if button.value() == 0:
@@ -259,9 +267,9 @@ while True:
       enow_reset()
 
     else:
-      if len(msg) > 31:
-        ch = struct.unpack('<HHHHHHHHHHHHHHHH', msg)
-        if len(ch) == 16:
+      if len(msg) > 63:
+        ch = struct.unpack('<HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH', msg)
+        if len(ch) == 32:
           # Received expected CRSF telegram channel count from the handset
 
           # 0.5 to 2.5ms range
@@ -277,15 +285,16 @@ while True:
           M2B.duty_u16(d2)
           
           # NeoPixel LEDs
-          LEDstring1[0] = rgb343(ch[6])
-          LEDstring1[1] = rgb343(ch[7])
-          LEDstring1[2] = rgb343(ch[8])
-          LEDstring1[3] = rgb343(ch[9])
+          LEDstring1[0] = (mapLED(ch[8]), mapLED(ch[9]), mapLED(ch[10]))
+          LEDstring1[1] = (mapLED(ch[11]), mapLED(ch[12]), mapLED(ch[13]))
+          LEDstring1[2] = (mapLED(ch[14]), mapLED(ch[15]), mapLED(ch[16]))
+          LEDstring1[3] = (mapLED(ch[17]), mapLED(ch[18]), mapLED(ch[19]))
           LEDstring1.write()
-          LEDstring2[0] = rgb343(ch[10])
-          LEDstring2[1] = rgb343(ch[11])
-          LEDstring2[2] = rgb343(ch[12])
-          LEDstring2[3] = rgb343(ch[13])
+
+          LEDstring2[0] = (mapLED(ch[20]), mapLED(ch[21]), mapLED(ch[22]))
+          LEDstring2[1] = (mapLED(ch[23]), mapLED(ch[24]), mapLED(ch[25]))
+          LEDstring2[2] = (mapLED(ch[26]), mapLED(ch[27]), mapLED(ch[28]))
+          LEDstring2[3] = (mapLED(ch[29]), mapLED(ch[30]), mapLED(ch[31]))
           LEDstring2.write()
 
           # Blink Core LED green

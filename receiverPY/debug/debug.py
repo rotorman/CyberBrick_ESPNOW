@@ -49,11 +49,11 @@ from neopixel import NeoPixel
 import utime
 import struct
 
-button = Pin(9, Pin.IN) # User key/button on CyberBrick Core
-
 # If you wish to change the WiFi channel, change this value (valid range is between 1 and 11):
 wifi_channel = 1
 # Remember to change it ALSO in the transmitter firmware!
+
+button = Pin(9, Pin.IN) # User key/button on CyberBrick Core
 
 # Initialize all servo outputs with 1.5ms pulse length in 20ms period
 S1 = PWM(Pin(3), freq=50, duty_u16=4915) # servo center 1.5ms equals to 65535/20 * 1.5 = 4915
@@ -139,11 +139,11 @@ while True:
       enow_reset()
 
     else:
-      if len(msg) > 31:
-        ch = struct.unpack('<HHHHHHHHHHHHHHHH', msg)
-        if len(ch) == 16:
+      if len(msg) > 63:
+        ch = struct.unpack('<HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH', msg)
+        if len(ch) == 32:
           # Received expected CRSF telegram channel count from the handset
-          print('%-5i%-5i%-5i%-5i| %-5i%-5i%-5i%-5i|%-5i%-5i%-5i%-5i| %-5i%-5i%-5i%-5i' % (ch[0:16]))
+          print('%-5i%-5i%-5i%-5i| %-5i%-5i%-5i%-5i|%-5i%-5i%-5i%-5i| %-5i%-5i%-5i%-5i| %-5i%-5i%-5i%-5i| %-5i%-5i%-5i%-5i|%-5i%-5i%-5i%-5i| %-5i%-5i%-5i%-5i' % (ch[0:32]))
           # Blink Core LED green
           if ((utime.ticks_ms() % blinkertime_ms) > (blinkertime_ms / 2)):
             np[0] = (0, 0, 0) # Dark phase
