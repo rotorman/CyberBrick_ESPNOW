@@ -10,7 +10,7 @@ The code in this repository contains a custom open-source firmware development f
 
 A brief video showing the code in action:
 
-[![Video showing EdgeTX radio controlling CyberBrick model](https://github.com/user-attachments/assets/e9a77cc4-9c01-408b-a0df-a8bd3900f830)](https://www.youtube.com/watch?v=XFTqVabXlMM)
+[![Video showing EdgeTX radio controlling CyberBrick model](https://github.com/user-attachments/assets/06b0f400-b9bc-4b4c-b449-c6c62e31536d)](https://www.youtube.com/watch?v=XFTqVabXlMM)
 
 You can find the C++ source code to flash numerous internal and external ExpressLRS modules under [transmitterFW](https://github.com/rotorman/CyberBrick_ESPNOW/tree/main/transmitterFW) subfolder and the MicroPython scripts for the CyberBrick Core modules under the [receiverPY](https://github.com/rotorman/CyberBrick_ESPNOW/tree/main/receiverPY) subfolder.
 
