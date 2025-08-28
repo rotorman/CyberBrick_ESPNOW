@@ -4,9 +4,9 @@ Under this folder you can find [ESP-NOW MicroPython](https://makerworld.com/en/c
 
 <img src="https://blog.bambulab.com/content/images/size/w320/2025/03/Frame-62.png" height="120px"> <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/4/4e/Micropython-logo.svg/500px-Micropython-logo.svg.png" height="120px"> <img height="200" alt="CyberBrick Core Module (A11)" src="https://github.com/user-attachments/assets/356cfe8e-2753-4c96-b5f2-a7980646a871" /> <img src="https://i0.wp.com/randomnerdtutorials.com/wp-content/uploads/2020/01/esp-now-logo.png" height="100px">
 
-The examples in this branch currently include code for [truck](https://makerworld.com/de/models/1396031-cyberbrick-official-truck), [forklift](https://makerworld.com/de/models/1395994-cyberbrick-official-forklift) and the [bulldozer by MottN](https://makerworld.com/de/models/1461532-bulldozer-cyberbrick-rc). Use these examples to adapt the code to further models. You can also find a debug script, that prints incoming [CRSF RC channels packet](https://github.com/tbs-fpv/tbs-crsf-spec/blob/main/crsf.md#0x16-rc-channels-packed-payload) values onto REPL terminal.
+The examples in this branch currently include code for [truck](https://makerworld.com/de/models/1396031-cyberbrick-official-truck), [forklift](https://makerworld.com/de/models/1395994-cyberbrick-official-forklift) and the [bulldozer by MottN](https://makerworld.com/de/models/1461532-bulldozer-cyberbrick-rc). Use these examples to adapt the code to further models. In addition you can find two generic receiver scripts that allow you to fully control the receiver side RGB LEDs from your EdgeTX radio. `genericRGB` uses a channel for each of the base colors for each of the maximum 8 LEDs, thus 24 channels to control the LEDs (in addition to first channels controlling the servos and brushed motors). On the other hand `genericHSV` offers an alternative to control the LEDs using hue-saturation-value based input, whereas saturation is set to 1.0 and you control only hue and value from the EdgeTX radio. The latter required 16 channels to control all possible 8 LEDs. You can also find a debug script, that prints incoming [CRSF RC channels packet](https://github.com/tbs-fpv/tbs-crsf-spec/blob/main/crsf.md#0x16-rc-channels-packed-payload) values onto REPL terminal.
 
-What are the benefits of the code in this branch in comparison to the original CyberBrick MicroPython stack:
+The benefits of the code in this branch in comparison to the original CyberBrick MicroPython stack are:
 - Fully open-source with no hidden/frozen MicroPython modules used.
 - Smoother control - full 12-bits are used to control the servos and also the motors, instead of only ca. 41 steps for motor and 102 steps for servo angle in original control. Also, the motor control PWM frequency is increased from 50 Hz to 500 Hz.
 - Fully customizable NeoPixel LED driver. Actuate the various LED pixels from remote or from some logic combination of other channel states.
@@ -16,6 +16,7 @@ Downsides:
 - No fancy intuitive graphical configuration environment, as is the case with CyberBrick apps. Here, the user has to configure the output mapping in receiver side MicroPython code.
 
 The handset, running [EdgeTX](https://edgetx.org/) firmware, sends, via custom ESP-NOW flashed ExpressLRS transmitter module (code in folder [./transmitterFW](https://github.com/rotorman/CyberBrick_ESPNOW/tree/main/transmitterFW)) channel data according to [CRSF specifications](https://github.com/tbs-fpv/tbs-crsf-spec/blob/main/crsf.md) - [16 proportional channels in 11-bit resolution](https://github.com/tbs-fpv/tbs-crsf-spec/blob/main/crsf.md#0x16-rc-channels-packed-payload). The channel order, range, mixing and further parameters can be adjusted in the EdgeTX radio.
+Optionally, when EdgeTX handset is flashed with the proposed extended CRSF protocol that supports 32-channels ([CRSF protocol extension proposal](https://github.com/tbs-fpv/tbs-crsf-spec/pull/28), [EdgeTX pull request](https://github.com/EdgeTX/edgetx/pull/6504) and [firmware download](https://github.com/rotorman/edgetx/releases/tag/v2.11.3_crsf_32ch)), you can fully exploit the generic scripts that require more than 16 channels radio link transport for proper operation.
 
 The most widely used mapping of the first 4 control channels are (Mode 2, AETR):
 
@@ -42,7 +43,59 @@ The mapping for the [bulldozer](https://makerworld.com/de/models/1461532-bulldoz
 - NeoPixel_Channel1: cabin lights, driven in code by channel 7 (3-way switch), brightness controlled by channel 8
 - NeoPixel_Channel2: front lights, driven in code by channel 9 (2-way switch)
 
-Instructions steps for writing the script to your CyberBrick Core:
+The mapping for the `genericRGB` is:
+- ch1: brushed motor1
+- ch2: brushed motor2
+- ch3: servo1 (0.5ms to 2.5ms range)
+- ch4: servo2 (0.5ms to 2.5ms range)
+- ch9: Neopixel string1 LED1 Red
+- ch10: Neopixel string1 LED1 Green
+- ch11: Neopixel string1 LED1 Blue
+- ch12: Neopixel string1 LED2 Red
+- ch13: Neopixel string1 LED2 Green
+- ch14: Neopixel string1 LED2 Blue
+- ch15: Neopixel string1 LED3 Red
+- ch16: Neopixel string1 LED3 Green
+- ch17: Neopixel string1 LED3 Blue
+- ch18: Neopixel string1 LED4 Red
+- ch19: Neopixel string1 LED4 Green
+- ch20: Neopixel string1 LED4 Blue
+- ch21: Neopixel string2 LED1 Red
+- ch22: Neopixel string2 LED1 Green
+- ch23: Neopixel string2 LED1 Blue
+- ch24: Neopixel string2 LED2 Red
+- ch25: Neopixel string2 LED2 Green
+- ch26: Neopixel string2 LED2 Blue
+- ch27: Neopixel string2 LED3 Red
+- ch28: Neopixel string2 LED3 Green
+- ch29: Neopixel string2 LED3 Blue
+- ch30: Neopixel string2 LED4 Red
+- ch31: Neopixel string2 LED4 Green
+- ch32: Neopixel string2 LED4 Blue
+
+The mapping for the `genericHSV` is:
+- ch1: brushed motor1
+- ch2: brushed motor2
+- ch3: servo1 (0.5ms to 2.5ms range)
+- ch4: servo2 (0.5ms to 2.5ms range)
+- ch17: Neopixel string1 LED1 hue
+- ch18: Neopixel string1 LED1 brightness
+- ch19: Neopixel string1 LED2 hue
+- ch20: Neopixel string1 LED2 brightness
+- ch21: Neopixel string1 LED3 hue
+- ch22: Neopixel string1 LED3 brightness
+- ch23: Neopixel string1 LED4 hue
+- ch24: Neopixel string1 LED4 brightness
+- ch25: Neopixel string2 LED1 hue
+- ch26: Neopixel string2 LED1 brightness
+- ch27: Neopixel string2 LED2 hue
+- ch28: Neopixel string2 LED2 brightness
+- ch29: Neopixel string2 LED3 hue
+- ch30: Neopixel string2 LED3 brightness
+- ch31: Neopixel string2 LED4 hue
+- ch32: Neopixel string2 LED4 brightness
+
+Instructions steps for copying the script to your CyberBrick Core:
 
 1. Download or check out (git clone) this repository.
 2. If you do not already have a [REPL capable MicroPython development environment setup](https://makerworld.com/en/cyberbrick/api-doc/cyberbrick_core/start/index.html#setting-up-the-development-environment), I suggest you take a look at [Arduino Lab for MicroPython](https://labs.arduino.cc/en/labs/micropython), which in my opinon will be easiest to work with.
