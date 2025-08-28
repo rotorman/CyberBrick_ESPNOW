@@ -12,6 +12,10 @@ A brief video showing the code in action:
 
 [![Video showing EdgeTX radio controlling CyberBrick model](https://github.com/user-attachments/assets/06b0f400-b9bc-4b4c-b449-c6c62e31536d)](https://www.youtube.com/watch?v=XFTqVabXlMM)
 
+A longer video showing the steps required to get everything setup:
+
+[![Step-by-step tutorial on how-to control CyberBrick models from an EdgeTX R/C handset](https://github.com/user-attachments/assets/ffa889b2-61e8-4d91-8037-4cc81470f3fb)](https://www.youtube.com/watch?v=SotQRQ-ImwE)
+
 You can find the C++ source code to flash numerous internal and external ExpressLRS modules under [transmitterFW](https://github.com/rotorman/CyberBrick_ESPNOW/tree/main/transmitterFW) subfolder and the MicroPython scripts for the CyberBrick Core modules under the [receiverPY](https://github.com/rotorman/CyberBrick_ESPNOW/tree/main/receiverPY) subfolder.
 
 The firmware can be built and flashed into the hardware using [Visual Studio Code](https://code.visualstudio.com/) and [PlatformIO](https://platformio.org/) extension paired with an [Arduino framework](https://docs.platformio.org/en/latest/frameworks/arduino.html) for [Espressif ESP32](https://docs.platformio.org/en/latest/platforms/espressif32.html#platform-espressif32) platform, similar to the development of the [ExpressLRS firmware](https://www.expresslrs.org/software/toolchain-install/).
