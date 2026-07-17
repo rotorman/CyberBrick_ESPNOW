@@ -69,7 +69,7 @@ esp_now_peer_info_t peerInfo;
 bool SendRCdataToRF();
 void timerCallback();
 bool initESPNOW();
-void ESPNOW_OnDataSentCB(const uint8_t *mac_addr, esp_now_send_status_t status);
+void ESPNOW_OnDataSentCB(const esp_now_send_info_t *tx_info, esp_now_send_status_t status);
 static void UARTconnected();
 static void UARTdisconnected();
 void ModelUpdateReq();
@@ -154,7 +154,7 @@ bool ICACHE_RAM_ATTR SendRCdataToRF()
 }
 
 // ESP-NOW callback, called when data is sent
-void ESPNOW_OnDataSentCB(const uint8_t *mac_addr, esp_now_send_status_t status) {
+void ESPNOW_OnDataSentCB(const esp_now_send_info_t *tx_info, esp_now_send_status_t status) {
   if (status == ESP_NOW_SEND_SUCCESS)
   {
     handset->JustSentRFpacket();
