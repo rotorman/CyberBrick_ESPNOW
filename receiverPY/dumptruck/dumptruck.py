@@ -208,7 +208,7 @@ while True:
           S1.duty_u16(int(2*SERVORAWmidpoint-steering))
           
           # 1 to 2ms range
-          bedtilt = mapchannel(ch[1], SERVOPULSE_1MS_TICKS, SERVOPULSE_2MS_TICKS)
+          bedtilt = mapchannel(ch[1], SERVOPULSE_0_5MS_TICKS, SERVOPULSE_2_5MS_TICKS)
           S2.duty_u16(int(2*SERVORAWmidpoint-bedtilt))
 
           throttle = ch[2]
