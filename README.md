@@ -39,6 +39,7 @@ The code should work with the following handsets running [EdgeTX](https://edgetx
 * [RadioMaster TX12 mkII with internal ELRS module](https://radiomasterrc.com/products/tx12-mark-ii-radio-controller)
 * [RadioMaster TX16s mkII with internal ELRS module](https://radiomasterrc.com/products/tx16s-mark-ii-radio-controller)
 * [RadioMaster Zorro with internal ELRS module](https://radiomasterrc.com/products/zorro-radio-controller?variant=46486367371456)
+* [SenduWing H17 with internal ELRS module](https://www.senduwing.com/product/h17/)
 
 The code supports following external RF modules (modules listed alphabetically):
 

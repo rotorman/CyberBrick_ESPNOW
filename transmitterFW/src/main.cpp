@@ -1,7 +1,7 @@
 /*
  * This file belongs to the CyberBrick ESP-NOW transmitter & receiver project, hosted originally at:
  * https://github.com/rotorman/CyberBrick_ESPNOW
- * Copyright (C) 2025, Risto Kõiva
+ * Copyright (C) 2026, Risto Kõiva
  *
  * Large parts of the code are based on the wonderful ExpressLRS project:
  * https://github.com/ExpressLRS/ExpressLRS and https://github.com/ExpressLRS/targets
